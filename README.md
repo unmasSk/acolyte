@@ -221,4 +221,5 @@ Contributions are welcome! Please read our [Contributing Guide](CONTRIBUTING.md)
 **Remember**: ACOLYTE is 100% local and private. Your code never leaves your machine.
 
 **🔴 IMPORTANT**: This is a PRE-ALPHA release. The system is untested and likely has significant issues. It is NOT ready for any real use. We need brave testers to help validate and fix the installation and deployment process.
+
 **🔴 IMPORTANT**: We've removed all project documentation temporarily to restructure it. It will be uploaded once it's ready — and yes, there's a lot of it.
