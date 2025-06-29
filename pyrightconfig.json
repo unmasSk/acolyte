@@ -1,0 +1,16 @@
+{
+  "defineConstant": {
+    "DEBUG": true
+  },
+  "reportCallIssue": "none",
+  "reportGeneralTypeIssues": "error",
+  "reportMissingImports": "error",
+  "reportMissingTypeStubs": false,
+  "pythonVersion": "3.11",
+  "pythonPlatform": "All",
+  "typeCheckingMode": "basic",
+  "useLibraryCodeForTypes": true,
+  "diagnosticRuleSet": {
+    "reportCallIssue": "none"
+  }
+}

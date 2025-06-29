@@ -1,0 +1,71 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Caches
+.cache/
+*.cover
+.coverage*
+
+# Poetry
+poetry.lock
+
+# Virtual envs
+.env
+.venv
+venv/
+ENV/
+
+# Test outputs
+htmlcov/
+.tox/
+
+# Logs
+debug.log
+*.log
+
+# IDEs
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Otros
+.acolyte
+.acolyte-dreams/  # Deprecated - moved to data/dreams/
+
+# Datos locales (pero mantener estructura)
+/data/*.db
+/data/logs/*
+/data/backups/*
+/data/dreams/*
+!/data/.gitkeep
+!/data/README.md
+!/data/dreams/.gitkeep
+
+# Infraestructura Docker volumes
+/infra/weaviate/*
+/infra/ollama/*
+!/infra/README.md
+
+# Archivo de configuración local
+.acolyte
+.acolyte.project
+
+# Archivos de sistema operativo
+.DS_Store
+Thumbs.db
+
+# Archivos de entorno (si contienen secretos)
+.env.local
+.env.*.local
+
+# Otros que podrías tener
+uploads/ # Si esta carpeta es para subidas temporales o generadas
+
+# Ignore mypy cache
+.mypy_cache/
+
+mcp/
+run_mcp.bat

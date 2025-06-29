@@ -1,0 +1,22 @@
+#!/bin/bash
+# ACOLYTE executable wrapper
+# This file is copied to ~/.local/bin/acolyte during installation
+
+ACOLYTE_HOME="${ACOLYTE_HOME:-$HOME/.acolyte}"
+export PYTHONPATH="$ACOLYTE_HOME/src:$PYTHONPATH"
+
+# Check if we're in development mode
+if [ -n "$ACOLYTE_DEV" ]; then
+    ACOLYTE_HOME="$ACOLYTE_DEV"
+fi
+
+# Check if ACOLYTE is installed
+if [ ! -d "$ACOLYTE_HOME" ]; then
+    echo "Error: ACOLYTE not found at $ACOLYTE_HOME"
+    echo "Please run the installation script first:"
+    echo "  curl -sSL https://raw.githubusercontent.com/yourusername/acolyte/main/install.sh | bash"
+    exit 1
+fi
+
+# Run ACOLYTE CLI
+exec python3 "$ACOLYTE_HOME/src/acolyte/cli.py" "$@"

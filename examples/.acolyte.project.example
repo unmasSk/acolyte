@@ -1,0 +1,9 @@
+# Example .acolyte.project file
+# This is the ONLY file ACOLYTE creates in your project
+# All data and infrastructure is stored in ~/.acolyte/projects/{project_id}/
+
+project_id: a3f4b2c1d5e6
+name: my-awesome-project
+path: /home/user/projects/my-awesome-project
+initialized: 2025-01-15T10:30:00Z
+acolyte_version: 1.0.0

@@ -1,0 +1,282 @@
+{
+  "_comment": "NOTE: vectorizer='none' because embeddings are calculated externally with UniXcoder",
+  "_changes": "Added task_checkpoint_id, total_tokens and related_sessions to Conversation for consistency with Python model",
+  "collections": [
+    {
+      "class": "Conversation",
+      "description": "Indexed conversations for semantic search",
+      "vectorizer": "none",
+      "properties": [
+        {
+          "name": "content",
+          "dataType": ["text"],
+          "description": "Summarized message content",
+          "tokenization": "word"
+        },
+        {
+          "name": "role",
+          "dataType": ["string"],
+          "description": "Sender role (user/assistant/system)"
+        },
+        {
+          "name": "session_id",
+          "dataType": ["string"],
+          "description": "Session ID"
+        },
+        {
+          "name": "timestamp",
+          "dataType": ["date"],
+          "description": "Message timestamp"
+        },
+        {
+          "name": "summary",
+          "dataType": ["text"],
+          "description": "Summary/extracted keywords",
+          "tokenization": "word"
+        },
+        {
+          "name": "context_used",
+          "dataType": ["text[]"],
+          "description": "Files/context used in response"
+        },
+        {
+          "name": "task_checkpoint_id",
+          "dataType": ["string"],
+          "description": "Associated task ID (optional)"
+        },
+        {
+          "name": "total_tokens",
+          "dataType": ["int"],
+          "description": "Cumulative counter of original tokens for statistics"
+        },
+        {
+          "name": "related_sessions",
+          "dataType": ["text[]"],
+          "description": "Array of semantically related session IDs"
+        }
+      ]
+    },
+    {
+      "class": "CodeChunk",
+      "description": "Indexed code fragments with the 18 defined types",
+      "vectorizer": "none",
+      "properties": [
+        {
+          "name": "content",
+          "dataType": ["text"],
+          "description": "Chunk code",
+          "tokenization": "field"
+        },
+        {
+          "name": "file_path",
+          "dataType": ["string"],
+          "description": "File path"
+        },
+        {
+          "name": "language",
+          "dataType": ["string"],
+          "description": "Programming language"
+        },
+        {
+          "name": "chunk_type",
+          "dataType": ["string"],
+          "description": "Chunk type: FUNCTION, METHOD, CONSTRUCTOR, PROPERTY, CLASS, INTERFACE, MODULE, NAMESPACE, COMMENT, DOCSTRING, README, IMPORTS, CONSTANTS, TYPES, TESTS, SUMMARY, SUPER_SUMMARY, UNKNOWN"
+        },
+        {
+          "name": "chunk_name",
+          "dataType": ["string"],
+          "description": "Element name (function, class, etc)"
+        },
+        {
+          "name": "start_line",
+          "dataType": ["int"],
+          "description": "Start line"
+        },
+        {
+          "name": "end_line",
+          "dataType": ["int"],
+          "description": "End line"
+        },
+        {
+          "name": "summary",
+          "dataType": ["text"],
+          "description": "Chunk summary"
+        },
+        {
+          "name": "last_modified",
+          "dataType": ["date"],
+          "description": "Last modification"
+        },
+        {
+          "name": "git_metadata",
+          "dataType": ["object"],
+          "description": "Git metadata",
+          "nestedProperties": [
+            {
+              "name": "author",
+              "dataType": ["string"]
+            },
+            {
+              "name": "commit_hash",
+              "dataType": ["string"]
+            },
+            {
+              "name": "commit_message",
+              "dataType": ["text"]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "class": "Document",
+      "description": "Complete documents (README, docs)",
+      "vectorizer": "none",
+      "properties": [
+        {
+          "name": "content",
+          "dataType": ["text"],
+          "description": "Document content"
+        },
+        {
+          "name": "file_path",
+          "dataType": ["string"],
+          "description": "Ruta del archivo"
+        },
+        {
+          "name": "document_type",
+          "dataType": ["string"],
+          "description": "Document type: CODE, MARKDOWN, CONFIG, DATA, OTHER"
+        },
+        {
+          "name": "title",
+          "dataType": ["string"],
+          "description": "Extracted title"
+        },
+        {
+          "name": "summary",
+          "dataType": ["text"],
+          "description": "Document summary"
+        },
+        {
+          "name": "last_indexed",
+          "dataType": ["date"],
+          "description": "Last indexed"
+        }
+      ]
+    },
+    {
+      "class": "Task",
+      "description": "Tasks grouping related sessions",
+      "vectorizer": "none",
+      "properties": [
+        {
+          "name": "title",
+          "dataType": ["string"],
+          "description": "Task title"
+        },
+        {
+          "name": "description",
+          "dataType": ["text"],
+          "description": "Detailed description"
+        },
+        {
+          "name": "task_type",
+          "dataType": ["string"],
+          "description": "Type: IMPLEMENTATION, DEBUGGING, REFACTORING, DOCUMENTATION, RESEARCH, REVIEW"
+        },
+        {
+          "name": "status",
+          "dataType": ["string"],
+          "description": "Status: PLANNING, IN_PROGRESS, COMPLETED"
+        },
+        {
+          "name": "keywords",
+          "dataType": ["text[]"],
+          "description": "Keywords for search"
+        },
+        {
+          "name": "session_ids",
+          "dataType": ["text[]"],
+          "description": "Associated session IDs"
+        },
+        {
+          "name": "created_at",
+          "dataType": ["date"],
+          "description": "Creation date"
+        },
+        {
+          "name": "completed_at",
+          "dataType": ["date"],
+          "description": "Completion date"
+        }
+      ]
+    },
+    {
+      "class": "DreamInsight",
+      "description": "Insights discovered during optimization",
+      "vectorizer": "none",
+      "properties": [
+        {
+          "name": "title",
+          "dataType": ["string"],
+          "description": "Insight title"
+        },
+        {
+          "name": "description",
+          "dataType": ["text"],
+          "description": "Descripción detallada"
+        },
+        {
+          "name": "insight_type",
+          "dataType": ["string"],
+          "description": "Type: PATTERN, CONNECTION, OPTIMIZATION, ARCHITECTURE, BUG_RISK"
+        },
+        {
+          "name": "entities_involved",
+          "dataType": ["text[]"],
+          "description": "Involved files/functions/classes"
+        },
+        {
+          "name": "confidence",
+          "dataType": ["number"],
+          "description": "Insight confidence (0.0-1.0)"
+        },
+        {
+          "name": "impact",
+          "dataType": ["string"],
+          "description": "Impact: LOW, MEDIUM, HIGH"
+        },
+        {
+          "name": "created_at",
+          "dataType": ["date"],
+          "description": "Discovery date"
+        }
+      ]
+    }
+  ],
+  "indexing_config": {
+    "vectorIndexType": "hnsw",
+    "vectorIndexConfig": {
+      "distance": "cosine",
+      "efConstruction": 128,
+      "maxConnections": 64,
+      "ef": 64,
+      "skip": false,
+      "dynamicEfMin": 100,
+      "dynamicEfMax": 500,
+      "dynamicEfFactor": 8,
+      "vectorCacheMaxObjects": 2000000
+    }
+  },
+  "replication_config": {
+    "factor": 1
+  },
+  "sharding_config": {
+    "virtualPerPhysical": 128,
+    "desiredCount": 1,
+    "actualCount": 1,
+    "desiredVirtualCount": 128,
+    "actualVirtualCount": 128
+  }
+}

@@ -1,0 +1,23 @@
+from typing import Optional, Dict, ClassVar
+import re
+from .base import BaseChunker
+
+class ChunkerFactory:
+    EXTENSION_MAP: ClassVar[Dict[str, str]]
+    SHEBANG_PATTERNS: ClassVar[Dict[re.Pattern[str], str]]
+    _chunker_map: ClassVar[Dict[str, tuple[str, str]]]
+
+    @classmethod
+    def create(cls, file_path: str, content: Optional[str] = ...) -> BaseChunker: ...
+    @classmethod
+    def detect_language(cls, file_path: str, content: Optional[str] = ...) -> str: ...
+    @classmethod
+    def _detect_from_content(cls, content: str) -> Optional[str]: ...
+    @classmethod
+    def _get_language_chunker(cls, language: str) -> Optional[BaseChunker]: ...
+    @classmethod
+    def get_supported_languages(cls) -> Dict[str, str]: ...
+    @classmethod
+    def is_supported_file(cls, file_path: str) -> bool: ...
+
+def get_chunker(file_path: str, content: Optional[str] = ...) -> BaseChunker: ...
