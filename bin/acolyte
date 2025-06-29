@@ -14,7 +14,7 @@ fi
 if [ ! -d "$ACOLYTE_HOME" ]; then
     echo "Error: ACOLYTE not found at $ACOLYTE_HOME"
     echo "Please run the installation script first:"
-    echo "  curl -sSL https://raw.githubusercontent.com/yourusername/acolyte/main/install.sh | bash"
+    echo "  curl -sSL https://raw.githubusercontent.com/unmasSk/acolyte/main/install.sh | bash"
     exit 1
 fi
 

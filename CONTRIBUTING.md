@@ -1,12 +1,12 @@
 # Contributing to ACOLYTE
 
-Thank you for your interest in contributing to ACOLYTE! 
+Thank you for your interest in contributing to ACOLYTE!
 
 ## 🤝 How to Contribute
 
 ### Reporting Bugs
 
-1. Check if the bug has already been reported in [Issues](https://github.com/yourusername/acolyte/issues)
+1. Check if the bug has already been reported in [Issues](https://github.com/unmasSk/acolyte/issues)
 2. Create a new issue with:
    - Clear title and description
    - Steps to reproduce
@@ -15,7 +15,7 @@ Thank you for your interest in contributing to ACOLYTE!
 
 ### Suggesting Features
 
-1. Check existing [Issues](https://github.com/yourusername/acolyte/issues) and [Discussions](https://github.com/yourusername/acolyte/discussions)
+1. Check existing [Issues](https://github.com/unmasSk/acolyte/issues) and [Discussions](https://github.com/unmasSk/acolyte/discussions)
 2. Create a new discussion with:
    - Clear description of the feature
    - Use cases and benefits
@@ -36,7 +36,7 @@ Thank you for your interest in contributing to ACOLYTE!
 
 ```bash
 # Clone your fork
-git clone https://github.com/yourusername/acolyte.git
+git clone https://github.com/unmasSk/acolyte.git
 cd acolyte
 
 # Install dependencies
@@ -98,8 +98,8 @@ Follow [Conventional Commits](https://www.conventionalcommits.org/):
 
 ## ❓ Questions?
 
-- Check [Discussions](https://github.com/yourusername/acolyte/discussions)
-- Ask in [Issues](https://github.com/yourusername/acolyte/issues)
+- Check [Discussions](https://github.com/unmasSk/acolyte/discussions)
+- Ask in [Issues](https://github.com/unmasSk/acolyte/issues)
 - Read the [Documentation](docs/)
 
 ## 📜 License

@@ -179,7 +179,7 @@ docker exec acolyte-ollama ollama list
 ### Setup Development Environment
 
 ```bash
-git clone https://github.com/yourusername/acolyte.git
+git clone https://github.com/unmasSk/acolyte.git
 cd acolyte
 poetry install
 ./scripts/dev/dev.sh test    # Run tests
