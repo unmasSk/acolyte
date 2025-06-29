@@ -26,8 +26,8 @@ Thank you for your interest in contributing to ACOLYTE!
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feature/amazing-feature`)
 3. Make your changes
-4. Run tests (`./dev.sh test`)
-5. Run linters (`./dev.sh lint`)
+4. Run tests (`.scripts/dev/dev.sh test`)
+5. Run linters (`.scripts/dev/dev.sh lint`)
 6. Commit with conventional commits (`feat:`, `fix:`, etc.)
 7. Push to your fork
 8. Create a Pull Request
@@ -43,8 +43,8 @@ cd acolyte
 poetry install
 
 # Run in development mode
-./dev.sh init
-./dev.sh start
+./scripts/dev/dev.sh init
+./scripts/dev/dev.sh start
 ```
 
 ## 📏 Code Standards
@@ -60,13 +60,13 @@ poetry install
 
 ```bash
 # Run all tests
-./dev.sh test
+./scripts/dev/dev.sh test
 
 # Run specific test
 poetry run pytest tests/test_specific.py
 
 # Run with coverage
-./dev.sh coverage
+./scripts/dev/dev.sh coverage
 ```
 
 ## 📝 Commit Messages
