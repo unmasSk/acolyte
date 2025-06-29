@@ -32,7 +32,7 @@
 - 🔒 **100% Private** – never connects to external APIs or cloud services.
 - 🧪 **OpenAI-compatible API** – plug it into your tools right now.
 
-**ACOLYTE is like having a full-stack co-developer who never forgets, never sleeps, and only works for you.**
+**ACOLYTE is like having a full-stack co-developer who never forgets, rarely sleeps (but dreams when it does), and only works for you.**
 
 > You're not using a chatbot. You're deploying an AI engineer in your machine.
 
