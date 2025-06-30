@@ -1,0 +1,96 @@
+#!/usr/bin/env python3
+"""
+Git hook que se ejecuta después de un merge exitoso (incluye pull).
+Notifica a ACOLYTE para re-indexar cambios del upstream.
+"""
+import subprocess
+import requests
+import json
+import sys
+from pathlib import Path
+
+def get_acolyte_config():
+    """Lee el puerto de ACOLYTE desde .acolyte"""
+    try:
+        acolyte_file = Path.cwd() / '.acolyte'
+        if acolyte_file.exists():
+            import yaml
+            with open(acolyte_file, 'r') as f:
+                config = yaml.safe_load(f)
+                return config.get('ports', {}).get('backend', 8000)
+    except:
+        pass
+    return 8000
+
+def get_changed_files():
+    """Obtiene archivos cambiados en el merge"""
+    try:
+        # ORIG_HEAD tiene el commit antes del merge
+        result = subprocess.run(
+            ['git', 'diff', '--name-only', 'ORIG_HEAD', 'HEAD'],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        return [f.strip() for f in result.stdout.splitlines() if f.strip()]
+    except subprocess.CalledProcessError:
+        # Si ORIG_HEAD no existe, obtener todos los archivos tracked
+        try:
+            result = subprocess.run(
+                ['git', 'ls-files'],
+                capture_output=True,
+                text=True,
+                check=True
+            )
+            return [f.strip() for f in result.stdout.splitlines() if f.strip()]
+        except:
+            return []
+
+def is_pull_operation():
+    """Detecta si fue un pull (no solo merge local)"""
+    try:
+        # Verificar si el último reflog fue un pull
+        result = subprocess.run(
+            ['git', 'reflog', '-1'],
+            capture_output=True,
+            text=True
+        )
+        return 'pull' in result.stdout.lower()
+    except:
+        return True  # Asumir pull por defecto
+
+def notify_acolyte(files, is_pull):
+    """Notifica a ACOLYTE sobre los cambios"""
+    port = get_acolyte_config()
+    url = f"http://localhost:{port}/api/index/git-changes"
+    
+    try:
+        response = requests.post(url, json={
+            'trigger': 'pull',  # Siempre 'pull' para simplificar
+            'files': files,
+            'metadata': {
+                'event': 'post-merge',
+                'is_pull': is_pull,
+                'is_merge_local': not is_pull,  # Info adicional si se necesita
+                'invalidate_cache': True  # Importante: invalidar cache siempre
+            }
+        }, timeout=5)
+        
+        if response.status_code != 200:
+            print(f"ACOLYTE: Error al notificar cambios (status {response.status_code})")
+    except requests.exceptions.ConnectionError:
+        # ACOLYTE no está corriendo, lo cual es OK
+        pass
+    except Exception as e:
+        print(f"ACOLYTE: Error inesperado: {e}")
+
+if __name__ == "__main__":
+    # Solo procesar si el merge fue exitoso (squash_msg no existe)
+    if Path('.git/SQUASH_MSG').exists():
+        sys.exit(0)
+    
+    files = get_changed_files()
+    is_pull = is_pull_operation()
+    
+    if files:
+        notify_acolyte(files, is_pull)

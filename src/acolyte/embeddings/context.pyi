@@ -1,0 +1,29 @@
+from dataclasses import dataclass
+from datetime import datetime
+from typing import List, Optional, TypedDict
+
+class RichCodeContextDict(TypedDict, total=False):
+    language: str
+    file_path: str
+    imports: List[str]
+    dependencies: List[str]
+    called_by: List[str]
+    calls: List[str]
+    last_modified: Optional[str]
+    test_coverage: Optional[float]
+    complexity: Optional[int]
+    semantic_tags: List[str]
+
+@dataclass
+class RichCodeContext:
+    language: str
+    file_path: str
+    imports: Optional[List[str]] = ...
+    dependencies: Optional[List[str]] = ...
+    called_by: Optional[List[str]] = ...
+    calls: Optional[List[str]] = ...
+    last_modified: Optional[datetime] = ...
+    test_coverage: Optional[float] = ...
+    complexity: Optional[int] = ...
+    semantic_tags: Optional[List[str]] = ...
+    def to_dict(self) -> RichCodeContextDict: ...

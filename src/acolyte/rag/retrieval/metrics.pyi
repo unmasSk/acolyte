@@ -1,0 +1,43 @@
+"""
+RAG-specific metrics collection type stubs.
+"""
+
+from typing import Dict, Any, List
+
+from acolyte.core.tracing import MetricsCollector
+
+class RAGMetrics:
+    collector: MetricsCollector
+    search_count: int
+    cache_hits: int
+    cache_misses: int
+    compression_count: int
+    total_chunks_returned: int
+    total_tokens_saved: int
+    latencies: Dict[str, List[float]]
+
+    def __init__(self) -> None: ...
+    def record_search(
+        self,
+        query: str,
+        latency_ms: float,
+        cache_hit: bool,
+        result_count: int,
+        search_type: str = "hybrid",
+    ) -> None: ...
+    def record_compression_savings(
+        self, original_tokens: int, compressed_tokens: int, compression_time_ms: float
+    ) -> None: ...
+    def record_filter_impact(
+        self, filter_type: str, before_count: int, after_count: int
+    ) -> None: ...
+    def record_rerank_impact(self, strategy: str, score_changes: List[float]) -> None: ...
+    def get_cache_hit_rate(self) -> float: ...
+    def get_average_latency(self, operation: str = "search_hybrid") -> float: ...
+    def get_p95_latency(self, operation: str = "search_hybrid") -> float: ...
+    def get_compression_efficiency(self) -> Dict[str, float]: ...
+    def get_search_summary(self) -> Dict[str, Any]: ...
+    def log_summary(self) -> None: ...
+    def reset_counters(self) -> None: ...
+
+def get_rag_metrics() -> RAGMetrics: ...

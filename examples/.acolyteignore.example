@@ -1,0 +1,75 @@
+# ACOLYTE Ignore File Example
+# This file specifies patterns for files/directories that ACOLYTE should not index
+# Similar to .gitignore syntax
+
+# Version control
+.git/
+.svn/
+.hg/
+
+# Dependencies
+node_modules/
+vendor/
+.venv/
+venv/
+env/
+*.egg-info/
+
+# Build outputs
+build/
+dist/
+target/
+out/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Cache and temporary files
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Logs
+*.log
+logs/
+
+# Database files (if not tracking)
+*.db
+*.sqlite
+*.sqlite3
+
+# Large media files
+*.mp4
+*.avi
+*.mkv
+*.zip
+*.tar.gz
+*.rar
+
+# Environment files with secrets
+.env
+.env.local
+.env.*.local
+
+# OS files
+Thumbs.db
+.DS_Store
+
+# Custom project-specific
+/data/
+/backup/
+/temp/

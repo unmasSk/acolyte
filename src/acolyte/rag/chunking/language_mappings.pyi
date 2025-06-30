@@ -1,0 +1,9 @@
+from typing import Set, Dict
+
+TREE_SITTER_LANGUAGE_MAP: Dict[str, str]
+UNSUPPORTED_LANGUAGES: Set[str]
+IMPLEMENTED_CHUNKERS: Set[str]
+
+def get_tree_sitter_language_name(language: str) -> str: ...
+def is_language_supported(language: str) -> bool: ...
+def get_supported_languages() -> list[str]: ...

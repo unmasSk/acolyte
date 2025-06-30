@@ -1,0 +1,97 @@
+#!/usr/bin/env python3
+"""
+Git hook que se ejecuta después de checkout (cambio de branch).
+Notifica a ACOLYTE sobre archivos diferentes entre branches.
+"""
+import subprocess
+import requests
+import json
+import sys
+from pathlib import Path
+
+def get_acolyte_config():
+    """Lee el puerto de ACOLYTE desde .acolyte"""
+    try:
+        acolyte_file = Path.cwd() / '.acolyte'
+        if acolyte_file.exists():
+            import yaml
+            with open(acolyte_file, 'r') as f:
+                config = yaml.safe_load(f)
+                return config.get('ports', {}).get('backend', 8000)
+    except:
+        pass
+    return 8000
+
+def get_changed_files(prev_head, new_head):
+    """Obtiene archivos diferentes entre los dos commits"""
+    try:
+        # Si es el mismo commit, no hay cambios
+        if prev_head == new_head:
+            return []
+            
+        result = subprocess.run(
+            ['git', 'diff', '--name-only', prev_head, new_head],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        return [f.strip() for f in result.stdout.splitlines() if f.strip()]
+    except subprocess.CalledProcessError:
+        return []
+
+def get_branch_info():
+    """Obtiene información sobre el branch actual"""
+    try:
+        branch = subprocess.run(
+            ['git', 'branch', '--show-current'],
+            capture_output=True,
+            text=True
+        ).stdout.strip()
+        
+        return branch or 'detached'
+    except:
+        return 'unknown'
+
+def notify_acolyte(files, prev_head, new_head, is_branch_checkout):
+    """Notifica a ACOLYTE sobre el cambio de contexto"""
+    port = get_acolyte_config()
+    url = f"http://localhost:{port}/api/index/git-changes"
+    
+    branch = get_branch_info()
+    
+    try:
+        response = requests.post(url, json={
+            'trigger': 'checkout',
+            'files': files,
+            'metadata': {
+                'event': 'post-checkout',
+                'is_branch_checkout': bool(int(is_branch_checkout)),
+                'previous_head': prev_head[:8],  # Short hash
+                'new_head': new_head[:8],
+                'current_branch': branch,
+                'context_switch': True
+            }
+        }, timeout=5)
+        
+        if response.status_code != 200:
+            print(f"ACOLYTE: Error al notificar cambio de branch (status {response.status_code})")
+    except requests.exceptions.ConnectionError:
+        # ACOLYTE no está corriendo, lo cual es OK
+        pass
+    except Exception as e:
+        print(f"ACOLYTE: Error inesperado: {e}")
+
+if __name__ == "__main__":
+    # Git pasa 3 argumentos: previous HEAD, new HEAD, flag (1 si es branch checkout)
+    if len(sys.argv) < 4:
+        sys.exit(0)
+        
+    prev_head = sys.argv[1]
+    new_head = sys.argv[2]
+    is_branch_checkout = sys.argv[3]
+    
+    # Solo procesar si realmente cambió el HEAD
+    if prev_head != new_head:
+        files = get_changed_files(prev_head, new_head)
+        if files or is_branch_checkout == "1":
+            notify_acolyte(files, prev_head, new_head, is_branch_checkout)
