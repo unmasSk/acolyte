@@ -76,6 +76,9 @@ acolyte = [
     "**/*.txt",
     "**/*.md",
     "**/*.sql",
+    "scripts/**/*.py",
+    "scripts/**/*.sh",
+    "scripts/**/*.bat",
 ]
 
 # Keep Poetry configuration for now (backward compatibility)

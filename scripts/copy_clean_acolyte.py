@@ -74,6 +74,7 @@ def copytree_clean(src: Path, dst: Path):
             except Exception as e:
                 print(f"{RED}Skipped (error: {e}): {rel_file}{RESET}")
 
+
 if __name__ == "__main__":
     copytree_clean(SRC, DST)
-    print("\nCopy complete!") 
+    print("\nCopy complete!")

@@ -15,11 +15,15 @@ from typing import Dict, Optional, List, Any
 import yaml
 
 # Add parent directories to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
-
-# Use centralized logging and datetime utilities
-from acolyte.core.logging import logger
-from acolyte.core.exceptions import AcolyteError, ConfigurationError
+# Try to import directly first (installed package)
+try:
+    from acolyte.core.logging import logger
+    from acolyte.core.exceptions import AcolyteError, ConfigurationError
+except ImportError:
+    # Development mode - add project root to path
+    sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
+    from acolyte.core.logging import logger
+    from acolyte.core.exceptions import AcolyteError, ConfigurationError
 
 # Add common modules to path
 sys.path.insert(0, str(Path(__file__).parent))
@@ -1151,32 +1155,32 @@ PARAMETER seed 42
             # SQLite database path
             db_path = self.project_global_dir / "data" / "acolyte.db"
             db_path.parent.mkdir(parents=True, exist_ok=True)
-            
+
             print_info("Creating SQLite database structure...")
             show_spinner("Initializing database tables", 1.5)
-            
+
             # The database will be created automatically when first accessed
             # DatabaseManager in core/database.py handles schema initialization
             # Just ensure the directory exists
-            
+
             if db_path.exists():
                 print_info(f"Database already exists at: {db_path}")
             else:
                 print_info(f"Database will be created at: {db_path}")
-            
+
             # Create other data directories
             dreams_dir = self.project_global_dir / "data" / "dreams"
             dreams_dir.mkdir(parents=True, exist_ok=True)
-            
+
             embeddings_dir = self.project_global_dir / "data" / "embeddings_cache"
             embeddings_dir.mkdir(parents=True, exist_ok=True)
-            
+
             print_success("Database structure initialized")
             print_info("SQLite tables will be created on first use")
             print_info("Weaviate collections will be initialized when services start")
-            
+
             logger.info("Database initialization complete", db_path=str(db_path))
-            
+
         except Exception as e:
             print_error(f"Failed to initialize database: {e}")
             logger.error("Database initialization failed", error=str(e))
@@ -1193,7 +1197,9 @@ PARAMETER seed 42
         print(f"\n{Colors.BOLD}Next Steps:{Colors.ENDC}")
         print(f"\n1. {Colors.GREEN}Start ACOLYTE services:{Colors.ENDC}")
         print(f"   {Colors.CYAN}acolyte start{Colors.ENDC}")
-        print(f"   {Colors.YELLOW}This will start Docker containers and initialize Weaviate{Colors.ENDC}")
+        print(
+            f"   {Colors.YELLOW}This will start Docker containers and initialize Weaviate{Colors.ENDC}"
+        )
 
         print(f"\n2. {Colors.GREEN}Wait for services to be ready:{Colors.ENDC}")
         print(f"   {Colors.CYAN}acolyte status{Colors.ENDC}")
@@ -1201,7 +1207,9 @@ PARAMETER seed 42
 
         print(f"\n3. {Colors.GREEN}Index your project (IMPORTANT):{Colors.ENDC}")
         print(f"   {Colors.CYAN}acolyte index{Colors.ENDC}")
-        print(f"   {Colors.YELLOW}This may take several minutes depending on project size{Colors.ENDC}")
+        print(
+            f"   {Colors.YELLOW}This may take several minutes depending on project size{Colors.ENDC}"
+        )
         print(f"   {Colors.YELLOW}ACOLYTE needs to analyze all your code files first{Colors.ENDC}")
 
         print(f"\n4. {Colors.GREEN}Start coding with ACOLYTE:{Colors.ENDC}")
@@ -1210,9 +1218,13 @@ PARAMETER seed 42
 
         print(f"\n{Colors.BOLD}Important Notes:{Colors.ENDC}")
         print(f"  • {Colors.YELLOW}Docker must be running before 'acolyte start'{Colors.ENDC}")
-        print(f"  • {Colors.YELLOW}First indexing is crucial - ACOLYTE won't work without it{Colors.ENDC}")
-        print(f"  • {Colors.YELLOW}Git hooks are installed - commits will auto-update the index{Colors.ENDC}")
-        
+        print(
+            f"  • {Colors.YELLOW}First indexing is crucial - ACOLYTE won't work without it{Colors.ENDC}"
+        )
+        print(
+            f"  • {Colors.YELLOW}Git hooks are installed - commits will auto-update the index{Colors.ENDC}"
+        )
+
         print(f"\n{Colors.BOLD}Ready to code with ACOLYTE!{Colors.ENDC} 🚀")
 
 

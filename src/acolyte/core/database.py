@@ -163,9 +163,7 @@ class DatabaseManager:
         try:
             self.db_path = db_path or self._get_default_path()
             self._connection = None
-            self._lock = (
-            asyncio.Lock()
-            )  # To serialize access and avoid concurrency issues
+            self._lock = asyncio.Lock()  # To serialize access and avoid concurrency issues
             self._init_schema()
             logger.info("DatabaseManager ready", db_path=self.db_path)
         except Exception as e:
@@ -174,21 +172,22 @@ class DatabaseManager:
 
     def _get_default_path(self) -> str:
         """Get default database path.
-        
+
         CLEAN PROJECT ARCHITECTURE:
         - If .acolyte.project exists: use ~/.acolyte/projects/{id}/data/
         - Otherwise (during development): use ./data/
         """
         # Check if we're in a configured project
         project_file = Path.cwd() / ".acolyte.project"
-        
+
         if project_file.exists():
             try:
                 import json
+
                 with open(project_file) as f:
                     project_data = json.load(f)
                     project_id = project_data.get("project_id")
-                    
+
                 if project_id:
                     # Use global project directory
                     global_data_dir = Path.home() / ".acolyte" / "projects" / project_id / "data"
@@ -196,7 +195,7 @@ class DatabaseManager:
                     return str(global_data_dir / "acolyte.db")
             except Exception as e:
                 logger.warning("Failed to read project file, using local data", error=str(e))
-        
+
         # Fallback for development
         data_dir = Path("./data")
         data_dir.mkdir(exist_ok=True)

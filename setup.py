@@ -4,7 +4,7 @@ Setup script for ACOLYTE
 This file is optional - modern pip can install directly from pyproject.toml
 Included for compatibility with older systems
 """
-
+import tomllib
 from setuptools import setup, find_packages
 from pathlib import Path
 
@@ -13,7 +13,7 @@ this_directory = Path(__file__).parent
 long_description = (this_directory / "README.md").read_text(encoding="utf-8")
 
 # Read version from pyproject.toml
-import tomllib
+
 with open("pyproject.toml", "rb") as f:
     pyproject = tomllib.load(f)
     version = pyproject["project"]["version"]
@@ -90,6 +90,9 @@ setup(
             "**/*.json",
             "**/*.txt",
             "**/*.sql",
+            "scripts/**/*.py",
+            "scripts/**/*.sh",
+            "scripts/**/*.bat",
         ],
     },
 )

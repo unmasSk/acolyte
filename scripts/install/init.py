@@ -15,11 +15,15 @@ from pathlib import Path
 from typing import Dict, List, Tuple, Optional, Any
 
 # Add parent directories to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
-
-# Use centralized logging and datetime utilities
-from acolyte.core.logging import logger
-from acolyte.core.utils.datetime_utils import utc_now_iso
+# Try to import directly first (installed package)
+try:
+    from acolyte.core.logging import logger
+    from acolyte.core.utils.datetime_utils import utc_now_iso
+except ImportError:
+    # Development mode - add project root to path
+    sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
+    from acolyte.core.logging import logger
+    from acolyte.core.utils.datetime_utils import utc_now_iso
 
 # Add common modules to path
 sys.path.insert(0, str(Path(__file__).parent))

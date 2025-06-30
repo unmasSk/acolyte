@@ -22,6 +22,7 @@ try:
     # When installed via pip, imports work directly
     from acolyte.core.logging import logger
     from acolyte.core.exceptions import AcolyteError
+
     # Determine if we're running from installed package
     PACKAGE_DIR = Path(__file__).parent.parent  # acolyte package root
     if (PACKAGE_DIR / 'scripts').exists():
@@ -38,41 +39,58 @@ except ImportError:
     from acolyte.core.exceptions import AcolyteError
 
 
+# Helper function to get script paths
+def get_script_path(script_name: str) -> Path:
+    """Get the correct path for a script, whether in development or installed"""
+    # Try multiple possible locations
+    possible_paths = [
+        PROJECT_ROOT / "scripts" / "install" / script_name,  # Development mode
+        Path(__file__).parent.parent / "scripts" / "install" / script_name,  # Installed package
+    ]
+
+    for path in possible_paths:
+        if path.exists():
+            return path
+
+    # If not found, return the expected path for better error messages
+    return PROJECT_ROOT / "scripts" / "install" / script_name
+
+
 class ProjectManager:
     """Manages ACOLYTE projects and their configurations"""
 
     def __init__(self):
         self.global_dir = self._get_global_dir()
         self.projects_dir = self.global_dir / "projects"
-        
+
         # Initialize global directory structure if needed
         self._ensure_global_structure()
-    
+
     def _ensure_global_structure(self):
         """Ensure ACOLYTE global directory structure exists"""
         # Create directories
         self.global_dir.mkdir(parents=True, exist_ok=True)
         self.projects_dir.mkdir(exist_ok=True)
-        
+
         # Create other necessary directories
         (self.global_dir / "models").mkdir(exist_ok=True)
         (self.global_dir / "logs").mkdir(exist_ok=True)
-        
+
         # Copy essential files if this is first run
         if not (self.global_dir / ".initialized").exists():
             self._first_run_setup()
-    
+
     def _first_run_setup(self):
         """Setup ACOLYTE on first run after pip install"""
         logger.info("First run detected, initializing ACOLYTE...")
-        
+
         # Copy Docker templates if available
-        docker_template = PROJECT_ROOT / "scripts" / "install" / "common" / "docker-compose.template.yml"
+        docker_template = get_script_path("common/docker-compose.template.yml")
         if docker_template.exists():
             templates_dir = self.global_dir / "templates"
             templates_dir.mkdir(exist_ok=True)
             shutil.copy2(docker_template, templates_dir / "docker-compose.template.yml")
-        
+
         # Copy example configurations
         examples_dir = PROJECT_ROOT / "examples"
         if examples_dir.exists():
@@ -80,7 +98,7 @@ class ProjectManager:
             if dest_examples.exists():
                 shutil.rmtree(dest_examples)
             shutil.copytree(examples_dir, dest_examples)
-        
+
         # Mark as initialized
         (self.global_dir / ".initialized").touch()
         logger.info(f"ACOLYTE initialized at {self.global_dir}")
@@ -225,9 +243,10 @@ def init(path: str, name: Optional[str], force: bool):
         name = click.prompt("Project name", default=project_path.name)
 
     # Run the initialization script
-    init_script = PROJECT_ROOT / "scripts" / "install" / "init.py"
+    init_script = get_script_path("init.py")
     if not init_script.exists():
         click.echo(click.style("✗ Initialization script not found!", fg="red"))
+        click.echo(f"Expected at: {init_script}")
         return
 
     # Set environment variables for the init script
@@ -236,8 +255,13 @@ def init(path: str, name: Optional[str], force: bool):
     os.environ['ACOLYTE_GLOBAL_DIR'] = str(manager.global_dir)
     os.environ['ACOLYTE_PROJECT_NAME'] = name or ""
 
-    # Run init script
-    result = subprocess.run([sys.executable, str(init_script)], cwd=project_path)
+    # Run init script with proper Python path
+    env = os.environ.copy()
+    # Ensure the acolyte package is in Python path
+    if str(PACKAGE_DIR) not in sys.path:
+        env['PYTHONPATH'] = str(PACKAGE_DIR) + os.pathsep + env.get('PYTHONPATH', '')
+
+    result = subprocess.run([sys.executable, str(init_script)], cwd=project_path, env=env)
 
     if result.returncode == 0:
         # Save project info
@@ -277,9 +301,10 @@ def install(path: str):
     click.echo(f"Project: {project_info['name']} ({project_id})")
 
     # Run installation script
-    install_script = PROJECT_ROOT / "scripts" / "install" / "install.py"
+    install_script = get_script_path("install.py")
     if not install_script.exists():
         click.echo(click.style("✗ Installation script not found!", fg="red"))
+        click.echo(f"Expected at: {install_script}")
         return
 
     # Set environment variables
@@ -287,8 +312,13 @@ def install(path: str):
     os.environ['ACOLYTE_PROJECT_PATH'] = str(project_path.resolve())
     os.environ['ACOLYTE_GLOBAL_DIR'] = str(manager.global_dir)
 
-    # Run install script
-    result = subprocess.run([sys.executable, str(install_script)], cwd=project_path)
+    # Run install script with proper Python path
+    env = os.environ.copy()
+    # Ensure the acolyte package is in Python path
+    if str(PACKAGE_DIR) not in sys.path:
+        env['PYTHONPATH'] = str(PACKAGE_DIR) + os.pathsep + env.get('PYTHONPATH', '')
+
+    result = subprocess.run([sys.executable, str(install_script)], cwd=project_path, env=env)
 
     if result.returncode == 0:
         click.echo(click.style("✓ Installation completed!", fg="green"))
@@ -588,11 +618,29 @@ def clean(path: str):
 @click.option('--path', default=".", help='Project path')
 @click.option('-f', '--follow', is_flag=True, help='Follow log output (like tail -f)')
 @click.option('-n', '--lines', default=100, help='Number of lines to show (default: 100)')
-@click.option('-s', '--service', type=click.Choice(['backend', 'weaviate', 'ollama', 'all']), default='all', help='Service to show logs for')
+@click.option(
+    '-s',
+    '--service',
+    type=click.Choice(['backend', 'weaviate', 'ollama', 'all']),
+    default='all',
+    help='Service to show logs for',
+)
 @click.option('--file', is_flag=True, help='Show debug.log file instead of Docker logs')
 @click.option('-g', '--grep', help='Filter logs containing text')
-@click.option('--level', type=click.Choice(['DEBUG', 'INFO', 'WARNING', 'ERROR']), help='Filter by log level (only for --file)')
-def logs(path: str, follow: bool, lines: int, service: str, file: bool, grep: Optional[str], level: Optional[str]):
+@click.option(
+    '--level',
+    type=click.Choice(['DEBUG', 'INFO', 'WARNING', 'ERROR']),
+    help='Filter by log level (only for --file)',
+)
+def logs(
+    path: str,
+    follow: bool,
+    lines: int,
+    service: str,
+    file: bool,
+    grep: Optional[str],
+    level: Optional[str],
+):
     """View ACOLYTE service logs"""
     project_path = Path(path)
     manager = ProjectManager()
@@ -626,11 +674,11 @@ def logs(path: str, follow: bool, lines: int, service: str, file: bool, grep: Op
             else:
                 # Use PowerShell Get-Content for Windows
                 cmd = ['powershell', '-Command', f'Get-Content "{debug_log}" -Tail {lines}']
-                
+
             # Add grep filter if specified
             if grep:
                 cmd[-1] += f' | Select-String "{grep}"'
-            
+
             # Add level filter if specified
             if level:
                 cmd[-1] += f' | Select-String "\\| {level} \\|"'
@@ -639,7 +687,7 @@ def logs(path: str, follow: bool, lines: int, service: str, file: bool, grep: Op
                 cmd = ['tail', '-f', f'-n{lines}', str(debug_log)]
             else:
                 cmd = ['tail', f'-n{lines}', str(debug_log)]
-            
+
             # Add filters using grep
             if grep or level:
                 cmd.extend(['|', 'grep'])
@@ -681,32 +729,32 @@ def logs(path: str, follow: bool, lines: int, service: str, file: bool, grep: Op
         # Build docker logs command
         for svc in services_to_show:
             container_name = f"acolyte-{svc}"
-            
+
             click.echo(click.style(f"\n📋 Logs for {svc.upper()}:", fg="cyan", bold=True))
             click.echo(f"Container: {container_name}")
-            
+
             # Build command
             cmd = compose_cmd + ['logs']
-            
+
             if follow and len(services_to_show) == 1:
                 # Only follow if showing single service
                 cmd.append('-f')
-            
+
             cmd.extend(['--tail', str(lines)])
             cmd.append(container_name)
-            
+
             # Execute command
             try:
                 result = subprocess.run(
                     cmd,
                     cwd=project_dir / "infra",
                     text=True,
-                    capture_output=not follow  # Don't capture if following
+                    capture_output=not follow,  # Don't capture if following
                 )
-                
+
                 if not follow and result.returncode == 0:
                     output = result.stdout
-                    
+
                     # Apply grep filter if specified
                     if grep:
                         filtered_lines = []
@@ -714,14 +762,14 @@ def logs(path: str, follow: bool, lines: int, service: str, file: bool, grep: Op
                             if grep.lower() in line.lower():
                                 filtered_lines.append(line)
                         output = '\n'.join(filtered_lines)
-                    
+
                     if output.strip():
                         click.echo(output)
                     else:
                         click.echo(click.style("  (no logs matching criteria)", fg="yellow"))
                 elif result.returncode != 0 and not follow:
                     click.echo(click.style(f"  ✗ Failed to get logs: {result.stderr}", fg="red"))
-                    
+
             except KeyboardInterrupt:
                 click.echo("\n" + click.style("✓ Log viewing stopped", fg="green"))
                 break
@@ -729,7 +777,12 @@ def logs(path: str, follow: bool, lines: int, service: str, file: bool, grep: Op
                 click.echo(click.style(f"  ✗ Error: {e}", fg="red"))
 
         if follow and len(services_to_show) > 1:
-            click.echo(click.style("\n⚠️ Follow mode only works with single service. Use -s to specify.", fg="yellow"))
+            click.echo(
+                click.style(
+                    "\n⚠️ Follow mode only works with single service. Use -s to specify.",
+                    fg="yellow",
+                )
+            )
 
 
 def main():
