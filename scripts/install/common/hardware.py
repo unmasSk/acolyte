@@ -156,9 +156,16 @@ class SystemDetector:
     @staticmethod
     def detect_disk_space() -> int:
         """Detect free disk space in GB"""
+        import os
+
         try:
             logger.info("Detecting available disk space...")
-            usage = psutil.disk_usage("/")
+            # Use the root of the current drive
+            if platform.system().lower() == "windows":
+                root_path = os.path.splitdrive(os.getcwd())[0] + os.sep
+            else:
+                root_path = "/"
+            usage = psutil.disk_usage(root_path)
             disk_gb = round(usage.free / (1024**3))
             logger.info(f"Detected free disk space: {disk_gb} GB")
             return disk_gb

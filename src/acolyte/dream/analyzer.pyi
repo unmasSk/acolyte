@@ -12,9 +12,9 @@ from acolyte.core.secure_config import Settings
 class AnalysisCapability(Enum):
     """Analysis capability levels based on available components."""
 
-    FULL: str
-    LIMITED: str
-    MINIMAL: str
+    FULL = "FULL"
+    LIMITED = "LIMITED"
+    MINIMAL = "MINIMAL"
 
 class DreamWindowManager:
     """

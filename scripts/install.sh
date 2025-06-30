@@ -63,7 +63,10 @@ check_requirements() {
         missing+=("python3")
     else
         python_version=$(python3 -c 'import sys; print(".".join(map(str, sys.version_info[:2])))')
-        if (( $(echo "$python_version < 3.11" | bc -l) )); then
+        if ! python3 -c "import sys; exit(0 if sys.version_info >= (3, 11) else 1)"; then
+            print_error "Python 3.11+ required (found $python_version)"
+            exit 1
+        fi
             print_error "Python 3.11+ required (found $python_version)"
             exit 1
         fi
@@ -125,11 +128,17 @@ install_from_source() {
     print_step "Installing PyYAML for git hooks..."
     python3 -m pip install --user pyyaml requests
     
-    # Install Poetry if not present
-    if ! command -v poetry &> /dev/null; then
-        print_step "Installing Poetry..."
-        curl -sSL https://install.python-poetry.org | python3 -
+    # Securely install Poetry using pipx
+    if ! command -v pipx >/dev/null 2>&1; then
+        echo "Installing pipx..."
+        python3 -m pip install --user pipx
+        python3 -m pipx ensurepath
         export PATH="$HOME/.local/bin:$PATH"
+    fi
+
+    if ! command -v poetry >/dev/null 2>&1; then
+        echo "Installing Poetry with pipx..."
+        pipx install poetry
     fi
     
     # Install project dependencies
@@ -155,31 +164,21 @@ install_from_git() {
 
 # Create executable
 create_executable() {
-    print_step "Creating executable..."
+    print_step "Installing executable..."
     
     # Create bin directory
     mkdir -p "$BIN_DIR"
     
-    # Create acolyte executable
-    cat > "$BIN_DIR/acolyte" << 'EOF'
-#!/bin/bash
-# ACOLYTE executable wrapper
-
-ACOLYTE_HOME="$HOME/.acolyte"
-export PYTHONPATH="$ACOLYTE_HOME/src:$PYTHONPATH"
-
-# Check if we're in development mode
-if [ -n "$ACOLYTE_DEV" ]; then
-    ACOLYTE_HOME="$ACOLYTE_DEV"
-fi
-
-# Run ACOLYTE CLI
-exec python3 "$ACOLYTE_HOME/src/acolyte/cli.py" "$@"
-EOF
-    
-    chmod +x "$BIN_DIR/acolyte"
-    
-    print_success "Executable created at $BIN_DIR/acolyte"
+    # Copy the executable from bin/
+    if [ -f "$INSTALL_DIR/bin/acolyte" ]; then
+        cp "$INSTALL_DIR/bin/acolyte" "$BIN_DIR/acolyte"
+        chmod +x "$BIN_DIR/acolyte"
+        print_success "Executable installed at $BIN_DIR/acolyte"
+    else
+        print_error "Executable not found in $INSTALL_DIR/bin/acolyte"
+        print_error "Installation may be corrupted"
+        exit 1
+    fi
 }
 
 # Update PATH

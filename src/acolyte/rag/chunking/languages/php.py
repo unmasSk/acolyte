@@ -3,8 +3,8 @@ PHP chunker using tree-sitter-languages.
 Comprehensive metadata extraction for PHP 5.6+ and PHP 8.x features.
 """
 
-from typing import Dict, List, Any, Optional, Set
-from tree_sitter_languages import get_language  # type: ignore
+from typing import Dict, List, Any, Optional, Set, cast
+from tree_sitter_languages import get_language
 
 from acolyte.models.chunk import ChunkType
 from acolyte.core.logging import logger
@@ -461,8 +461,14 @@ class PhpChunker(BaseChunker, SecurityAnalysisMixin, PatternDetectionMixin):
 
             # Hardcoded credentials
             elif n.type == 'assignment_expression':
-                text = n.text.decode('utf8').lower()
-                if any(secret in text for secret in ['password', 'api_key', 'secret', 'token']):
+                text: Optional[str] = None
+                if n.text is not None:
+                    decoded_text = n.text.decode('utf8')
+                    if decoded_text is not None:
+                        text = decoded_text.lower()
+                if text is not None and any(
+                    secret in text for secret in ['password', 'api_key', 'secret', 'token']
+                ):
                     # Check if it's a literal string assignment
                     for child in n.children:
                         if child.type == 'string' and len(child.text) > 10:
@@ -478,7 +484,7 @@ class PhpChunker(BaseChunker, SecurityAnalysisMixin, PatternDetectionMixin):
 
             # Weak crypto
             elif n.type == 'function_call_expression':
-                func_name = self._get_function_name(n)
+                func_name = self._get_function_name(n)  # type: ignore[assignment]
                 if func_name in ['md5', 'sha1']:
                     issues.append(
                         {
@@ -510,10 +516,12 @@ class PhpChunker(BaseChunker, SecurityAnalysisMixin, PatternDetectionMixin):
                             ext_deps.append(func_name)
 
             elif n.type == 'object_creation_expression':
-                class_name = ''
+                class_name = ""
                 for child in n.children:
                     if child.type in ['name', 'qualified_name']:
-                        class_name = child.text.decode('utf8')
+                        if child.text is not None:
+                            assert isinstance(child.text, bytes)
+                            class_name = cast(str, child.text.decode('utf8'))
                         break
 
                 if class_name:
@@ -528,8 +536,12 @@ class PhpChunker(BaseChunker, SecurityAnalysisMixin, PatternDetectionMixin):
 
             elif n.type == 'member_call_expression':
                 # Track method calls that might indicate framework usage
-                method_text = n.text.decode('utf8')
-                if any(
+                method_text: Optional[str] = None
+                if n.text is not None:
+                    decoded_text = n.text.decode('utf8')  # type: ignore[assignment]
+                    if decoded_text is not None:
+                        method_text = decoded_text
+                if method_text is not None and any(
                     pattern in method_text for pattern in ['->render(', '->json(', '->redirect(']
                 ):
                     patterns_dict = metadata.get('patterns', {})
@@ -609,14 +621,20 @@ class PhpChunker(BaseChunker, SecurityAnalysisMixin, PatternDetectionMixin):
         """Extract function name from function call node."""
         for child in node.children:
             if child.type == 'name':
-                return child.text.decode('utf8')
+                if child.text is not None:
+                    decoded = child.text.decode('utf8')
+                    if decoded is not None:
+                        return decoded
         return None
 
     def _get_const_name(self, const_element: Any) -> Optional[str]:
         """Extract constant name."""
         for child in const_element.children:
             if child.type == 'name':
-                return child.text.decode('utf8')
+                if child.text is not None:
+                    decoded = child.text.decode('utf8')
+                    if decoded is not None:
+                        return decoded
         return None
 
     def _uses_test_framework(self, node: Any) -> bool:

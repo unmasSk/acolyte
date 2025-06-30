@@ -13,11 +13,7 @@ lint:
 	poetry run ruff check --fix src/
 
 mypy:
-<<<<<<< HEAD
 	poetry run mypy . --exclude tests
-=======
-	poetry run mypy .
->>>>>>> 79e621db84ad176fbe382257b37b035e4b0d0398
 
 up:
 	docker compose up -d

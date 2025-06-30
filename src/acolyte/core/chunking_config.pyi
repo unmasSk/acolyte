@@ -7,10 +7,10 @@ from typing import List, Dict, Any
 from dataclasses import dataclass
 
 class ChunkingStrategy(Enum):
-    SEMANTIC: str
-    HIERARCHICAL: str
-    FIXED_SIZE: str
-    ADAPTIVE: str
+    SEMANTIC = "semantic"
+    HIERARCHICAL = "hierarchical"
+    FIXED_SIZE = "fixed_size"
+    ADAPTIVE = "adaptive"
 
 @dataclass
 class StrategyConfig:

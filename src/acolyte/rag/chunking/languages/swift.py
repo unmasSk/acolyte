@@ -272,7 +272,7 @@ class SwiftChunker(
         self, content: str, lines: List[str], file_path: str
     ) -> Optional[Chunk]:
         """Extract and group all import statements."""
-        imports = []
+        imports: List[Dict[str, Any]] = []
         import_lines = []
 
         for match in self.import_pattern.finditer(content):
@@ -280,7 +280,15 @@ class SwiftChunker(
             module_name = match.group(2)
             line_num = content[: match.start()].count('\n')
 
-            imports.append({'kind': import_kind, 'module': module_name, 'line': line_num + 1})
+            # Use cast to inform mypy about the types
+            from typing import cast
+
+            import_kind_str = cast(str, import_kind) if import_kind else ""
+            module_name_str = cast(str, module_name)
+
+            imports.append(
+                {'kind': import_kind_str, 'module': module_name_str, 'line': line_num + 1}
+            )
             import_lines.append(line_num)
 
         if not imports:

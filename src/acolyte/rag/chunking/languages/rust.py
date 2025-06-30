@@ -609,7 +609,7 @@ class RustChunker(LanguageChunker, SecurityAnalysisMixin, PatternDetectionMixin)
 
     def _analyze_quality(self, node) -> Dict[str, Any]:
         """Analyze quality metrics including doc comments and test hints."""
-        quality = {
+        quality: Dict[str, Any] = {
             'has_docstring': False,
             'has_tests': False,
             'error_handling': 'none',
@@ -641,13 +641,13 @@ class RustChunker(LanguageChunker, SecurityAnalysisMixin, PatternDetectionMixin)
             for tag in ('#[test]', '#[tokio::test]', '#[cfg(test)]', '#[should_panic]')
         ):
             quality['has_tests'] = True
-            if not isinstance(quality.get('test_coverage_hints'), list):
-                quality['test_coverage_hints'] = []
-            quality['test_coverage_hints'].append('has_test_attributes')
+            test_hints = quality['test_coverage_hints']
+            assert isinstance(test_hints, list)
+            test_hints.append('has_test_attributes')
         if any(assert_kw in raw_text for assert_kw in ('assert!', 'assert_eq!', 'assert_ne!')):
-            if not isinstance(quality.get('test_coverage_hints'), list):
-                quality['test_coverage_hints'] = []
-            quality['test_coverage_hints'].append('uses_assertions')
+            test_hints = quality['test_coverage_hints']
+            assert isinstance(test_hints, list)
+            test_hints.append('uses_assertions')
         return quality
 
     # Override security patterns for Rust-specific vulnerabilities

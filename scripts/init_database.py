@@ -172,8 +172,10 @@ class DatabaseInitializer:
             with open(self.weaviate_schemas_path, "r", encoding="utf-8") as f:
                 weaviate_config = json.load(f)
 
-            # Conectar a Weaviate usando WEAVIATE_URL de Settings
-            weaviate_url = self.config.get("WEAVIATE_URL", "http://localhost:8080")
+            # Conectar a Weaviate usando el puerto de la configuración
+            ports = self.config.get("ports", {})
+            weaviate_port = ports.get("weaviate", 8080)
+            weaviate_url = f"http://localhost:{weaviate_port}"
             client = Client(url=weaviate_url)
 
             # Verificar conexión
@@ -245,7 +247,7 @@ class DatabaseInitializer:
         Returns:
             Diccionario con el estado de la verificación
         """
-        status = {
+        status: dict[str, dict[str, object]] = {
             "sqlite": {"ok": False, "tables": 0, "error": None},
             "weaviate": {"ok": False, "collections": 0, "error": None},
         }
@@ -268,7 +270,9 @@ class DatabaseInitializer:
 
         # Verificar Weaviate
         try:
-            weaviate_url = self.config.get("WEAVIATE_URL", "http://localhost:8080")
+            ports = self.config.get("ports", {})
+            weaviate_port = ports.get("weaviate", 8080)
+            weaviate_url = f"http://localhost:{weaviate_port}"
             client = Client(url=weaviate_url)
 
             if client.is_ready():
@@ -330,7 +334,9 @@ class DatabaseInitializer:
         if success:
             logger.info("\n✅ ¡Bases de datos inicializadas correctamente!")
             logger.info(f"SQLite: {self.db_path}")
-            logger.info(f"Weaviate: {self.config.get('WEAVIATE_URL', 'http://localhost:8080')}")
+            ports = self.config.get("ports", {})
+            weaviate_port = ports.get("weaviate", 8080)
+            logger.info(f"Weaviate: http://localhost:{weaviate_port}")
         else:
             logger.error("\n❌ La inicialización no se completó correctamente")
 

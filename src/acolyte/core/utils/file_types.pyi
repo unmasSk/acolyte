@@ -3,11 +3,11 @@ from typing import Set, Dict, ClassVar
 from enum import Enum
 
 class FileCategory(Enum):
-    CODE: str
-    DOCUMENTATION: str
-    CONFIGURATION: str
-    DATA: str
-    OTHER: str
+    CODE = "code"
+    DOCUMENTATION = "documentation"
+    CONFIGURATION = "configuration"
+    DATA = "data"
+    OTHER = "other"
 
 class FileTypeDetector:
     LANGUAGE_MAP: ClassVar[Dict[str, str]]

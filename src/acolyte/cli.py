@@ -7,6 +7,7 @@ Global tool for managing ACOLYTE in user projects
 import hashlib
 import os
 import sys
+import shutil
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Dict, Any
@@ -14,13 +15,27 @@ from typing import Optional, Dict, Any
 import click
 import yaml
 import requests
+import subprocess
 
-from acolyte.core.logging import logger
-from acolyte.core.exceptions import AcolyteError
-
-# Add project root to path for imports
-PROJECT_ROOT = Path(__file__).parent.parent.parent
-sys.path.insert(0, str(PROJECT_ROOT))
+# Handle imports differently when installed via pip vs development
+try:
+    # When installed via pip, imports work directly
+    from acolyte.core.logging import logger
+    from acolyte.core.exceptions import AcolyteError
+    # Determine if we're running from installed package
+    PACKAGE_DIR = Path(__file__).parent.parent  # acolyte package root
+    if (PACKAGE_DIR / 'scripts').exists():
+        # Running from source
+        PROJECT_ROOT = PACKAGE_DIR.parent
+    else:
+        # Installed via pip - use package location
+        PROJECT_ROOT = PACKAGE_DIR
+except ImportError:
+    # Development mode - add project root to path
+    PROJECT_ROOT = Path(__file__).parent.parent.parent
+    sys.path.insert(0, str(PROJECT_ROOT / 'src'))
+    from acolyte.core.logging import logger
+    from acolyte.core.exceptions import AcolyteError
 
 
 class ProjectManager:
@@ -29,8 +44,46 @@ class ProjectManager:
     def __init__(self):
         self.global_dir = self._get_global_dir()
         self.projects_dir = self.global_dir / "projects"
+        
+        # Initialize global directory structure if needed
+        self._ensure_global_structure()
+    
+    def _ensure_global_structure(self):
+        """Ensure ACOLYTE global directory structure exists"""
+        # Create directories
         self.global_dir.mkdir(parents=True, exist_ok=True)
         self.projects_dir.mkdir(exist_ok=True)
+        
+        # Create other necessary directories
+        (self.global_dir / "models").mkdir(exist_ok=True)
+        (self.global_dir / "logs").mkdir(exist_ok=True)
+        
+        # Copy essential files if this is first run
+        if not (self.global_dir / ".initialized").exists():
+            self._first_run_setup()
+    
+    def _first_run_setup(self):
+        """Setup ACOLYTE on first run after pip install"""
+        logger.info("First run detected, initializing ACOLYTE...")
+        
+        # Copy Docker templates if available
+        docker_template = PROJECT_ROOT / "scripts" / "install" / "common" / "docker-compose.template.yml"
+        if docker_template.exists():
+            templates_dir = self.global_dir / "templates"
+            templates_dir.mkdir(exist_ok=True)
+            shutil.copy2(docker_template, templates_dir / "docker-compose.template.yml")
+        
+        # Copy example configurations
+        examples_dir = PROJECT_ROOT / "examples"
+        if examples_dir.exists():
+            dest_examples = self.global_dir / "examples"
+            if dest_examples.exists():
+                shutil.rmtree(dest_examples)
+            shutil.copytree(examples_dir, dest_examples)
+        
+        # Mark as initialized
+        (self.global_dir / ".initialized").touch()
+        logger.info(f"ACOLYTE initialized at {self.global_dir}")
 
     def _get_global_dir(self) -> Path:
         """Get the global ACOLYTE directory"""
@@ -49,8 +102,6 @@ class ProjectManager:
         git_dir = project_path / ".git"
         if git_dir.exists():
             try:
-                import subprocess
-
                 result = subprocess.run(
                     ["git", "remote", "get-url", "origin"],
                     cwd=project_path,
@@ -186,8 +237,6 @@ def init(path: str, name: Optional[str], force: bool):
     os.environ['ACOLYTE_PROJECT_NAME'] = name or ""
 
     # Run init script
-    import subprocess
-
     result = subprocess.run([sys.executable, str(init_script)], cwd=project_path)
 
     if result.returncode == 0:
@@ -239,14 +288,31 @@ def install(path: str):
     os.environ['ACOLYTE_GLOBAL_DIR'] = str(manager.global_dir)
 
     # Run install script
-    import subprocess
-
     result = subprocess.run([sys.executable, str(install_script)], cwd=project_path)
 
     if result.returncode == 0:
         click.echo(click.style("✓ Installation completed!", fg="green"))
     else:
         click.echo(click.style("✗ Installation failed!", fg="red"))
+
+
+def detect_docker_compose_cmd() -> list[str]:
+    """Detecta si está disponible 'docker compose' (v2) o 'docker-compose' (v1) y retorna el comando adecuado como lista."""
+    try:
+        # Probar 'docker compose version'
+        result = subprocess.run(["docker", "compose", "version"], capture_output=True, text=True)
+        if result.returncode == 0:
+            return ["docker", "compose"]
+    except Exception:
+        pass
+    try:
+        # Probar 'docker-compose version'
+        result = subprocess.run(["docker-compose", "version"], capture_output=True, text=True)
+        if result.returncode == 0:
+            return ["docker-compose"]
+    except Exception:
+        pass
+    raise RuntimeError("Neither 'docker compose' nor 'docker-compose' is available on this system.")
 
 
 @cli.command()
@@ -273,18 +339,16 @@ def start(path: str):
 
     click.echo(click.style("🚀 Starting ACOLYTE services...", fg="cyan"))
 
-    # Start Docker services
-    import subprocess
-
+    compose_cmd = detect_docker_compose_cmd()
     result = subprocess.run(
-        ["docker-compose", "-f", str(docker_compose), "up", "-d"], cwd=project_dir / "infra"
+        compose_cmd + ["-f", str(docker_compose), "up", "-d"], cwd=project_dir / "infra"
     )
 
     if result.returncode == 0:
         click.echo(click.style("✓ Services started!", fg="green"))
 
         # Load config to show URLs
-        config_file = project_dir / "config.yaml"
+        config_file = project_dir / ".acolyte"
         if config_file.exists():
             with open(config_file, 'r') as f:
                 config = yaml.safe_load(f)
@@ -321,11 +385,9 @@ def stop(path: str):
 
     click.echo(click.style("🛑 Stopping ACOLYTE services...", fg="cyan"))
 
-    # Stop Docker services
-    import subprocess
-
+    compose_cmd = detect_docker_compose_cmd()
     result = subprocess.run(
-        ["docker-compose", "-f", str(docker_compose), "down"], cwd=project_dir / "infra"
+        compose_cmd + ["-f", str(docker_compose), "down"], cwd=project_dir / "infra"
     )
 
     if result.returncode == 0:
@@ -361,11 +423,9 @@ def status(path: str):
     if docker_compose.exists():
         click.echo("\nServices:")
 
-        # Check if Docker is running
-        import subprocess
-
+        compose_cmd = detect_docker_compose_cmd()
         result = subprocess.run(
-            ["docker-compose", "-f", str(docker_compose), "ps"],
+            compose_cmd + ["-f", str(docker_compose), "ps"],
             cwd=project_dir / "infra",
             capture_output=True,
             text=True,
@@ -420,7 +480,7 @@ def index(path: str, full: bool):
     # Call indexing service via API
     project_id = project_info['project_id']
     project_dir = manager.get_project_dir(project_id)
-    config_file = project_dir / "config.yaml"
+    config_file = project_dir / ".acolyte"
 
     if not config_file.exists():
         click.echo(click.style("✗ Configuration not found!", fg="red"))
@@ -471,7 +531,7 @@ def projects():
     projects = []
     for project_dir in manager.projects_dir.iterdir():
         if project_dir.is_dir():
-            config_file = project_dir / "config.yaml"
+            config_file = project_dir / ".acolyte"
             if config_file.exists():
                 try:
                     with open(config_file, 'r') as f:
@@ -522,6 +582,154 @@ def clean(path: str):
 
         # TODO: Clean other cache
         click.echo(click.style("✓ Cleanup completed!", fg="green"))
+
+
+@cli.command()
+@click.option('--path', default=".", help='Project path')
+@click.option('-f', '--follow', is_flag=True, help='Follow log output (like tail -f)')
+@click.option('-n', '--lines', default=100, help='Number of lines to show (default: 100)')
+@click.option('-s', '--service', type=click.Choice(['backend', 'weaviate', 'ollama', 'all']), default='all', help='Service to show logs for')
+@click.option('--file', is_flag=True, help='Show debug.log file instead of Docker logs')
+@click.option('-g', '--grep', help='Filter logs containing text')
+@click.option('--level', type=click.Choice(['DEBUG', 'INFO', 'WARNING', 'ERROR']), help='Filter by log level (only for --file)')
+def logs(path: str, follow: bool, lines: int, service: str, file: bool, grep: Optional[str], level: Optional[str]):
+    """View ACOLYTE service logs"""
+    project_path = Path(path)
+    manager = ProjectManager()
+
+    # Check if initialized
+    project_info = manager.load_project_info(project_path)
+    if not project_info:
+        click.echo(click.style("✗ Project not initialized!", fg="red"))
+        return
+
+    project_id = project_info['project_id']
+    project_dir = manager.get_project_dir(project_id)
+
+    if file:
+        # Show debug.log file
+        debug_log = project_dir / "data" / "debug.log"
+        if not debug_log.exists():
+            click.echo(click.style("✗ No debug.log file found!", fg="red"))
+            click.echo("Services may not have been started yet.")
+            return
+
+        click.echo(click.style("📄 Showing debug.log:", fg="cyan", bold=True))
+        click.echo(f"File: {debug_log}")
+        click.echo()
+
+        # Build command based on OS
+        if os.name == 'nt':  # Windows
+            if follow:
+                # Use PowerShell Get-Content -Wait for Windows
+                cmd = ['powershell', '-Command', f'Get-Content "{debug_log}" -Tail {lines} -Wait']
+            else:
+                # Use PowerShell Get-Content for Windows
+                cmd = ['powershell', '-Command', f'Get-Content "{debug_log}" -Tail {lines}']
+                
+            # Add grep filter if specified
+            if grep:
+                cmd[-1] += f' | Select-String "{grep}"'
+            
+            # Add level filter if specified
+            if level:
+                cmd[-1] += f' | Select-String "\\| {level} \\|"'
+        else:  # Unix-like
+            if follow:
+                cmd = ['tail', '-f', f'-n{lines}', str(debug_log)]
+            else:
+                cmd = ['tail', f'-n{lines}', str(debug_log)]
+            
+            # Add filters using grep
+            if grep or level:
+                cmd.extend(['|', 'grep'])
+                if level:
+                    cmd.extend(['-E', f'\\| {level} \\|'])
+                if grep:
+                    if level:
+                        cmd.extend(['|', 'grep', grep])
+                    else:
+                        cmd.append(grep)
+
+        # Execute command
+        try:
+            if os.name == 'nt':
+                # Windows: run PowerShell directly
+                subprocess.run(cmd)
+            else:
+                # Unix: use shell=True for pipe
+                subprocess.run(' '.join(cmd), shell=True)
+        except KeyboardInterrupt:
+            click.echo("\n" + click.style("✓ Log viewing stopped", fg="green"))
+
+    else:
+        # Show Docker logs
+        docker_compose = project_dir / "infra" / "docker-compose.yml"
+        if not docker_compose.exists():
+            click.echo(click.style("✗ Services not installed!", fg="red"))
+            return
+
+        # Determine which services to show
+        services_to_show = []
+        if service == 'all':
+            services_to_show = ['backend', 'weaviate', 'ollama']
+        else:
+            services_to_show = [service]
+
+        compose_cmd = detect_docker_compose_cmd()
+
+        # Build docker logs command
+        for svc in services_to_show:
+            container_name = f"acolyte-{svc}"
+            
+            click.echo(click.style(f"\n📋 Logs for {svc.upper()}:", fg="cyan", bold=True))
+            click.echo(f"Container: {container_name}")
+            
+            # Build command
+            cmd = compose_cmd + ['logs']
+            
+            if follow and len(services_to_show) == 1:
+                # Only follow if showing single service
+                cmd.append('-f')
+            
+            cmd.extend(['--tail', str(lines)])
+            cmd.append(container_name)
+            
+            # Execute command
+            try:
+                result = subprocess.run(
+                    cmd,
+                    cwd=project_dir / "infra",
+                    text=True,
+                    capture_output=not follow  # Don't capture if following
+                )
+                
+                if not follow and result.returncode == 0:
+                    output = result.stdout
+                    
+                    # Apply grep filter if specified
+                    if grep:
+                        filtered_lines = []
+                        for line in output.splitlines():
+                            if grep.lower() in line.lower():
+                                filtered_lines.append(line)
+                        output = '\n'.join(filtered_lines)
+                    
+                    if output.strip():
+                        click.echo(output)
+                    else:
+                        click.echo(click.style("  (no logs matching criteria)", fg="yellow"))
+                elif result.returncode != 0 and not follow:
+                    click.echo(click.style(f"  ✗ Failed to get logs: {result.stderr}", fg="red"))
+                    
+            except KeyboardInterrupt:
+                click.echo("\n" + click.style("✓ Log viewing stopped", fg="green"))
+                break
+            except Exception as e:
+                click.echo(click.style(f"  ✗ Error: {e}", fg="red"))
+
+        if follow and len(services_to_show) > 1:
+            click.echo(click.style("\n⚠️ Follow mode only works with single service. Use -s to specify.", fg="yellow"))
 
 
 def main():

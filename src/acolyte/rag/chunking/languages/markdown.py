@@ -3,7 +3,7 @@ Markdown chunker using tree-sitter-languages.
 Extracts rich metadata from documentation and README files.
 """
 
-from typing import Dict, List, Any
+from typing import Dict, List, Any, cast
 from tree_sitter_languages import get_language  # type: ignore
 
 from acolyte.models.chunk import Chunk, ChunkType
@@ -275,7 +275,7 @@ class MarkdownChunker(BaseChunker):
         def analyze_list(node, depth=0):
             for child in node.children:
                 if child.type == 'list_item':
-                    metadata['item_count'] += 1
+                    metadata['item_count'] = cast(int, metadata['item_count']) + 1
 
                     # Check for task list items
                     text = child.text.decode('utf8')
@@ -323,7 +323,7 @@ class MarkdownChunker(BaseChunker):
 
         return todos
 
-    def _extract_links(self, node) -> List[Dict[str, str]]:
+    def _extract_links(self, node) -> List[Dict[str, Any]]:
         """Extract all links from the node."""
         links = []
 

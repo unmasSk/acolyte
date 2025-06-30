@@ -100,12 +100,13 @@ class Settings:
 
     def __init__(self) -> None:
         self.config = self._load_config()
+        self._validate_config()  # Validate missing sections
         self.validator = ConfigValidator()
         self._ensure_localhost_binding()
         self.validator.validate_config(self.config)
         logger.info(
             "Settings initialized",
-            config_source=".acolyte" if Path(".acolyte").exists() else "defaults",
+            config_source=".acolyte" if self._find_config_file() else "defaults",
         )
 
     def _ensure_localhost_binding(self) -> None:
@@ -114,7 +115,76 @@ class Settings:
         if "ports" not in self.config:
             self.config["ports"] = {}
         if "backend" not in self.config["ports"]:
-            self.config["ports"]["backend"] = 8000
+            self.config["ports"]["backend"] = 42000
+
+    def _get_default_config(self) -> Dict[str, Any]:
+        """Get default configuration with ACOLYTE port ranges.
+
+        Returns:
+            Dict[str, Any]: Default configuration
+        """
+        return {
+            "version": "1.0",
+            "project": {"name": "acolyte-project", "path": "."},
+            "model": {"name": "qwen2.5-coder:3b", "context_size": 32768},
+            "ports": {
+                "weaviate": 42080,  # ACOLYTE range: 42080-42099
+                "ollama": 42434,  # ACOLYTE range: 42434-42453
+                "backend": 42000,  # ACOLYTE range: 42000-42019
+            },
+            "logging": {"level": "INFO", "file": ".acolyte/logs/debug.log", "rotation_size_mb": 10},
+            "dream": {
+                "fatigue_threshold": 7.5,
+                "emergency_threshold": 9.5,
+                "cycle_duration_minutes": 5,
+                "dream_folder_name": ".acolyte-dreams",
+            },
+            "cache": {
+                "max_size": 1000,
+                "ttl_seconds": 3600,
+            },
+            "rag": {
+                "compression": {
+                    "enabled": True,
+                    "ratio": 0.7,
+                    "avg_chunk_tokens": 200,
+                },
+            },
+        }
+
+    def _find_config_file(self) -> Path | None:
+        """Find the .acolyte configuration file.
+
+        Search order:
+        1. Current directory .acolyte
+        2. Global directory ~/.acolyte/projects/{id}/.acolyte (if .acolyte.project exists)
+
+        Returns:
+            Optional[Path]: Path to config file or None
+        """
+        # First, check current directory
+        local_config = Path.cwd() / ".acolyte"
+        if local_config.exists():
+            logger.info(f"Using local configuration: {local_config}")
+            return local_config
+
+        # Then check for project-specific config
+        project_file = Path.cwd() / ".acolyte.project"
+        if project_file.exists():
+            try:
+                import json
+
+                project_data = json.loads(project_file.read_text())
+                project_id = project_data.get("project_id")
+                if project_id:
+                    global_config = Path.home() / ".acolyte" / "projects" / project_id / ".acolyte"
+                    if global_config.exists():
+                        logger.info(f"Using global configuration: {global_config}")
+                        return global_config
+            except Exception as e:
+                logger.error(f"Error reading .acolyte.project: {e}")
+
+        return None
 
     def _load_config(self) -> Dict[str, Any]:
         """
@@ -124,18 +194,12 @@ class Settings:
         2. .acolyte file (SOURCE OF TRUTH)
         3. Environment variables (for development overrides)
         """
-        # Minimum defaults
-        defaults = {
-            "version": "1.0",
-            "project": {"name": "acolyte-project", "path": "."},
-            "model": {"name": "qwen2.5-coder:3b", "context_size": 32768},
-            "ports": {"weaviate": 8080, "ollama": 11434, "backend": 8000},
-            "logging": {"level": "INFO", "file": ".acolyte/logs/debug.log", "rotation_size_mb": 10},
-        }
+        # Get defaults from single source
+        defaults = self._get_default_config()
 
-        # Load .acolyte if it exists
-        config_path = Path(".acolyte")
-        if config_path.exists():
+        # Find .acolyte configuration file
+        config_path = self._find_config_file()
+        if config_path and config_path.exists():
             try:
                 with open(config_path, encoding='utf-8') as f:
                     acolyte_config = yaml.safe_load(f)
@@ -188,6 +252,37 @@ class Settings:
                 current[key] = {}
             current = current[key]
         current[path[-1]] = value
+
+    def _validate_config(self) -> None:
+        """Validate that all required configuration sections exist."""
+        required_sections = [
+            "version",
+            "project",
+            "model",
+            "ports",
+            "dream",
+            "cache",
+            "rag",
+        ]
+
+        missing_sections = []
+        for section in required_sections:
+            if section not in self.config:
+                missing_sections.append(section)
+
+        if missing_sections:
+            logger.warning(
+                f"Configuration missing required sections: {missing_sections}. "
+                f"Using defaults for missing sections."
+            )
+
+            # Get defaults from single source
+            defaults = self._get_default_config()
+
+            # Add missing sections from defaults
+            for section in missing_sections:
+                if section in defaults:
+                    self.config[section] = defaults[section]
 
     def get(self, key: str, default: Any = None) -> Any:
         """Get configuration value with support for nested paths."""

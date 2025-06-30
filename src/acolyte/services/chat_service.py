@@ -75,7 +75,7 @@ class ChatService:
         try:
             import weaviate  # type: ignore
 
-            weaviate_port = self.config.get("ports.weaviate", 8080)
+            weaviate_port = self.config.get("ports.weaviate", 42080)
             weaviate_url = f"http://localhost:{weaviate_port}"
             self.weaviate_client = weaviate.Client(weaviate_url)
 

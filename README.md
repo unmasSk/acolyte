@@ -52,21 +52,33 @@
 
 > ⚠️ **Note:** These instructions are theoretical and untested. The installation process has never been validated in a real environment. Proceed with caution and expect issues.
 >
-> **📖 For detailed step-by-step instructions, see the [Installation Atomic Flow](docs/INSTALLATION_ATOMIC_FLOW.md)**
+> **📖 For detailed step-by-step instructions, see the [Installation Guide](INSTALL.md)**
 
-### Installation (One Time)
+### Installation (Choose one method)
 
-**Linux/Mac:**
+#### Method 1: Install with pip (Recommended)
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/unmasSk/acolyte/main/scripts/install.sh | bash
+# Install from GitHub
+pip install git+https://github.com/unmasSk/acolyte.git
+
+# Or for development
+git clone https://github.com/unmasSk/acolyte.git
+cd acolyte
+pip install -e .
+```
+
+#### Method 2: Quick Install Scripts
+
+**Linux/Mac:**
+```bash
+curl -sSL https://raw.githubusercontent.com/unmasSk/acolyte/main/install-pip.sh | bash
 ```
 
 **Windows:**
-
 ```powershell
-Invoke-WebRequest -Uri https://raw.githubusercontent.com/unmasSk/acolyte/main/scripts/install.bat -OutFile install.bat
-.\install.bat
+Invoke-WebRequest -Uri https://raw.githubusercontent.com/unmasSk/acolyte/main/install-pip.bat -OutFile install-pip.bat
+.\install-pip.bat
 ```
 
 ### Usage (Per Project)

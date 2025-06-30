@@ -1,9 +1,89 @@
+[project]
+name = "acolyte"
+version = "0.1.0"
+description = "Local AI Programming Assistant with infinite memory and OpenAI-compatible API"
+readme = "README.md"
+authors = [{name = "Bextia", email = ""}]
+license = {text = "BSL"}
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: Other/Proprietary License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries :: Application Frameworks",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.110.0",
+    "pydantic>=2.6.0",
+    "loguru>=0.7.2",
+    "gitpython>=3.1.40",
+    "uvicorn[standard]>=0.29.0",
+    "pyyaml>=6.0.0",
+    "numpy>=2.3.0",
+    "transformers>=4.52.4",
+    "aiohttp>=3.9.0",
+    "asyncio>=3.4.3",
+    "psutil>=7.0.0",
+    "tree-sitter>=0.20.4",
+    "tree-sitter-languages>=1.10.2",
+    "torch>=2.7.1",
+    "click>=8.1.0",
+    "rich>=13.0.0",
+    "tqdm>=4.66.0",
+    "requests>=2.31.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/unmasSk/acolyte"
+Documentation = "https://github.com/unmasSk/acolyte/tree/main/docs"
+Repository = "https://github.com/unmasSk/acolyte"
+Issues = "https://github.com/unmasSk/acolyte/issues"
+
+[project.scripts]
+acolyte = "acolyte.cli:main"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.4.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=5.0.0",
+    "mypy>=1.8.0",
+    "types-pyyaml>=6.0.12",
+    "types-tree-sitter>=0.20.1",
+    "types-tree-sitter-languages>=1.10.0",
+    "types-aiofiles>=24.1.0",
+    "types-psutil>=7.0.0",
+    "weaviate-client>=3.26.7,<4.0.0",
+    "pytest-timeout>=2.4.0",
+    "ruff>=0.12.0",
+    "types-requests>=2.32.4",
+    "black>=22.0.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["acolyte*"]
+
+[tool.setuptools.package-data]
+acolyte = [
+    "**/*.yaml",
+    "**/*.yml", 
+    "**/*.json",
+    "**/*.txt",
+    "**/*.md",
+    "**/*.sql",
+]
+
+# Keep Poetry configuration for now (backward compatibility)
 [tool.poetry]
 name = "acolyte"
 version = "0.1.0"
-description = "Copiloto local de programación, privado, con memoria infinita y API OpenAI-compatible."
+description = "Local AI Programming Assistant"
 authors = ["Bextia"]
-license = "BSL"
 packages = [{ include = "acolyte", from = "src" }]
 
 [tool.poetry.dependencies]
@@ -68,9 +148,6 @@ warn_unused_configs = true
 no_implicit_optional = true
 strict_equality = true
 
-[tool.poetry.scripts]
-acolyte = "acolyte.cli:main"
-
 [build-system]
-requires = ["poetry-core>=1.0.0"]
-build-backend = "poetry.core.masonry.api"
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"

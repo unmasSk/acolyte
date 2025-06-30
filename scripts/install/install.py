@@ -1,730 +1,1247 @@
 #!/usr/bin/env python3
 """
-🚀 ACOLYTE INSTALL - Complete Installation Process
-Reads configuration from ~/.acolyte/projects/{project_id}/ and installs everything needed
+🚀 ACOLYTE INSTALL - Complete Interactive Installation
+Configures and installs ACOLYTE with user preferences
 """
 
 import asyncio
-import logging
+import json
 import os
-import random
-import subprocess
 import sys
-import time
-from datetime import datetime
+import shutil
 from pathlib import Path
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional, List, Any
 
-import psutil
 import yaml
-from tqdm import tqdm
+
+# Add parent directories to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
+
+# Use centralized logging and datetime utilities
+from acolyte.core.logging import logger
+from acolyte.core.exceptions import AcolyteError, ConfigurationError
 
 # Add common modules to path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from common import (
     ACOLYTE_LOGO,
-    CONSCIOUSNESS_TIPS,
     Colors,
+    DockerGenerator,
+    ModelRecommender,
+    PortManager,
+    SystemDetector,
     animate_text,
     print_error,
     print_header,
     print_info,
-    print_progress_bar,
-    print_step,
     print_success,
     print_warning,
     show_spinner,
+    validate_port,
 )
-
-# Get environment variables from CLI
-PROJECT_ID = os.environ.get('ACOLYTE_PROJECT_ID', '')
-PROJECT_PATH = os.environ.get('ACOLYTE_PROJECT_PATH', '.')
-GLOBAL_DIR = os.environ.get('ACOLYTE_GLOBAL_DIR', str(Path.home() / '.acolyte'))
-
-# Configure logging
-project_dir = Path(GLOBAL_DIR) / "projects" / PROJECT_ID
-log_dir = project_dir / "data" / "logs"
-log_dir.mkdir(parents=True, exist_ok=True)
-
-log_file = log_dir / f"install_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
-logging.basicConfig(
-    level=logging.DEBUG,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    handlers=[logging.FileHandler(log_file), logging.StreamHandler()],
-)
-logger = logging.getLogger(__name__)
+from common.config_template import get_complete_config
 
 
-class RequirementsChecker:
-    """Check and validate system requirements"""
+class ProjectInfoCollector:
+    """Collect project information interactively"""
 
-    REQUIRED_TOOLS = {
-        "git": {
-            "command": ["git", "--version"],
-            "min_version": "2.0.0",
-            "install_hint": "Install from: https://git-scm.com",
-        },
-        "docker": {
-            "command": ["docker", "--version"],
-            "min_version": "20.0.0",
-            "install_hint": "Install from: https://docs.docker.com/get-docker/",
-        },
-        "python": {
-            "command": ["python3", "--version"],
-            "min_version": "3.11.0",
-            "install_hint": "Python 3.11+ required",
-        },
-    }
+    def __init__(self, project_path: Path):
+        self.project_path = project_path
+        self.project_name = project_path.name
 
-    @classmethod
-    def check_tool(cls, tool_name: str, tool_info: Dict) -> Tuple[bool, str]:
-        """Check if a tool is installed and meets version requirements"""
-        try:
-            show_spinner(f"Checking {tool_name}...", 0.5)
+    def collect_user_info(self) -> str:
+        """Collect user information"""
+        print_header("👤 User Information")
 
-            # Use python instead of python3 on Windows
-            command = tool_info["command"].copy()
-            if tool_name == "python" and sys.platform == "win32":
-                command[0] = "python"
+        # Get username with default
+        default_user = os.environ.get('USER', os.environ.get('USERNAME', 'developer'))
+        print(f"\n{Colors.CYAN}What's your name/username?{Colors.ENDC}")
+        print(f"{Colors.YELLOW}This will be used in configuration and prompts{Colors.ENDC}")
+        user_name = input(f"Your name [{default_user}]: ").strip() or default_user
 
-            result = subprocess.run(command, capture_output=True, text=True, timeout=5)
+        logger.info("User info collected", user_name=user_name)
 
-            if result.returncode != 0:
-                return False, "Not installed"
+        return user_name
 
-            # Extract version if needed
-            output = result.stdout.strip()
-            if tool_info["min_version"]:
-                # Simple version extraction (works for most tools)
-                import re
+    def collect_project_info(self) -> str:
+        """Collect project information"""
+        print_header("📁 Project Information")
 
-                version_match = re.search(r"(\d+\.\d+\.\d+)", output)
-                if version_match:
-                    version = version_match.group(1)
-                    # Simple version comparison
-                    if version < tool_info["min_version"]:
-                        return False, f"Version {version} < {tool_info['min_version']}"
-                    return True, f"Version {version}"
+        # Project name with validation
+        print(f"\n{Colors.CYAN}What's your project name?{Colors.ENDC}")
+        print(f"{Colors.YELLOW}This will be used in configuration and prompts{Colors.ENDC}")
 
-            return True, "Installed"
-
-        except (subprocess.TimeoutExpired, FileNotFoundError):
-            return False, "Not found"
-        except Exception as e:
-            logger.error(f"Error checking {tool_name}: {e}")
-            return False, f"Error: {str(e)}"
-
-    @classmethod
-    def check_all(cls) -> Dict[str, Tuple[bool, str]]:
-        """Check all required tools"""
-        results = {}
-
-        print_info("Checking system requirements...")
-
-        # Show fancy progress
-        tools = list(cls.REQUIRED_TOOLS.items())
-        for i, (tool_name, tool_info) in enumerate(tools):
-            print_progress_bar(
-                i,
-                len(tools),
-                prefix="Progress:",
-                suffix=f"Checking {tool_name}",
-                length=30,
+        while True:
+            project_name = (
+                input(f"Project name [{self.project_name}]: ").strip() or self.project_name
             )
-            time.sleep(0.3)  # Slow down for visual effect
 
-            success, message = cls.check_tool(tool_name, tool_info)
-            results[tool_name] = (success, message)
+            # Validate project name
+            if not project_name or len(project_name) < 2:
+                print_warning("Project name must be at least 2 characters")
+                continue
+            if any(char in project_name for char in ['/', '\\', ':', '*', '?', '"', '<', '>', '|']):
+                print_warning("Project name cannot contain special characters: / \\ : * ? \" < > |")
+                continue
+            break
 
-            if success:
-                print_success(f"{tool_name}: {message}")
-            else:
-                print_error(f"{tool_name}: {message}")
-                print(f"  {Colors.CYAN}{tool_info['install_hint']}{Colors.ENDC}")
+        logger.info("Project info collected", project_name=project_name)
 
-        # Complete progress bar
-        print_progress_bar(len(tools), len(tools), prefix="Progress:", suffix="Complete", length=30)
+        return project_name
 
-        return results
+    def detect_and_confirm_stack(self) -> Dict[str, List[str]]:
+        """Detect technology stack and allow user to confirm/modify"""
+        print_header("🔍 Technology Stack Detection")
 
+        print_info("Analyzing project files...")
+        show_spinner("Detecting technologies", 1.5)
 
-class ConfigLoader:
-    """Load and validate configuration"""
+        # Auto-detect stack
+        stack = self._auto_detect_stack()
 
-    def __init__(self, config_path: Path):
-        self.config_path = config_path
-        self.config = None
+        # Show detected stack
+        print(f"\n{Colors.GREEN}Detected technologies:{Colors.ENDC}")
 
-    def load(self) -> Optional[Dict]:
-        """Load configuration from config.yaml"""
-        try:
-            show_spinner("Loading configuration...", 1.0)
+        if stack["backend"]:
+            print(f"\n{Colors.CYAN}Backend:{Colors.ENDC}")
+            for tech in stack["backend"]:
+                print(f"  • {tech}")
 
-            if not self.config_path.exists():
-                print_error(f"Configuration file not found: {self.config_path}")
-                print_info("Run 'acolyte init' first to create configuration")
-                return None
+        if stack["frontend"]:
+            print(f"\n{Colors.CYAN}Frontend:{Colors.ENDC}")
+            for tech in stack["frontend"]:
+                print(f"  • {tech}")
 
-            with open(self.config_path, "r", encoding="utf-8") as f:
-                self.config = yaml.safe_load(f)
+        if stack["database"]:
+            print(f"\n{Colors.CYAN}Database:{Colors.ENDC}")
+            for tech in stack["database"]:
+                print(f"  • {tech}")
 
-            # Validate required fields with animation
-            required_fields = ["version", "project", "hardware", "model", "docker"]
-            for i, field in enumerate(required_fields):
-                print_progress_bar(
-                    i + 1,
-                    len(required_fields),
-                    prefix="Validating:",
-                    suffix=f"Field: {field}",
-                    length=30,
+        if stack["tools"]:
+            print(f"\n{Colors.CYAN}Tools:{Colors.ENDC}")
+            for tech in stack["tools"]:
+                print(f"  • {tech}")
+
+        # Ask if user wants to modify
+        print(f"\n{Colors.CYAN}Is this correct?{Colors.ENDC}")
+        modify = input("Press Enter to accept, or 'e' to edit: ").strip().lower()
+
+        if modify == 'e':
+            stack = self._edit_stack(stack)
+
+        return stack
+
+    def _auto_detect_stack(self) -> Dict[str, List[str]]:
+        """Auto-detect technology stack from project files"""
+        stack: Dict[str, List[str]] = {"backend": [], "frontend": [], "database": [], "tools": []}
+
+        # Backend detection
+        if (self.project_path / "requirements.txt").exists() or (
+            self.project_path / "pyproject.toml"
+        ).exists():
+            stack["backend"].append("Python")
+
+            # Check for specific frameworks
+            if (self.project_path / "manage.py").exists():
+                stack["backend"].append("Django")
+            elif any(
+                (self.project_path / name).exists()
+                for name in ["app.py", "application.py", "wsgi.py"]
+            ):
+                stack["backend"].append("Flask/FastAPI")
+
+        if (self.project_path / "package.json").exists():
+            try:
+                with open(self.project_path / "package.json") as f:
+                    pkg = json.load(f)
+                    deps = {**pkg.get("dependencies", {}), **pkg.get("devDependencies", {})}
+
+                    # Backend frameworks
+                    if "express" in deps:
+                        stack["backend"].append("Express.js")
+                    elif "fastify" in deps:
+                        stack["backend"].append("Fastify")
+                    elif "@nestjs/core" in deps:
+                        stack["backend"].append("NestJS")
+
+                    # Frontend frameworks
+                    if "react" in deps:
+                        stack["frontend"].append("React")
+                    if "vue" in deps:
+                        stack["frontend"].append("Vue.js")
+                    if "@angular/core" in deps:
+                        stack["frontend"].append("Angular")
+                    if "svelte" in deps:
+                        stack["frontend"].append("Svelte")
+                    if "next" in deps:
+                        stack["frontend"].append("Next.js")
+
+                    # Languages
+                    if "typescript" in deps or "@types/node" in deps:
+                        stack["frontend"].append("TypeScript")
+                    elif stack["frontend"] or stack["backend"]:
+                        stack["frontend"].append("JavaScript")
+
+                    # Databases
+                    if any(db in deps for db in ["pg", "postgres", "postgresql"]):
+                        stack["database"].append("PostgreSQL")
+                    if any(db in deps for db in ["mysql", "mysql2"]):
+                        stack["database"].append("MySQL")
+                    if "mongodb" in deps or "mongoose" in deps:
+                        stack["database"].append("MongoDB")
+                    if "redis" in deps:
+                        stack["database"].append("Redis")
+            except json.JSONDecodeError as e:
+                # Log JSON parsing errors with context
+                logger.error(
+                    "Failed to parse package.json",
+                    path=str(self.project_path / "package.json"),
+                    error=str(e),
                 )
-                time.sleep(0.2)  # Slow down for visual effect
-
-                if field not in self.config:
-                    print_error(f"Missing required field in config: {field}")
-                    return None
-
-            print_success("Configuration loaded successfully")
-
-            # Show project info
-            project_name = self.config["project"]["name"]
-            project_id = self.config["project"]["id"]
-            model_name = self.config["model"]["name"]
-
-            print(f"\n{Colors.CYAN}Project: {Colors.BOLD}{project_name}{Colors.ENDC}")
-            print(f"{Colors.CYAN}ID: {Colors.BOLD}{project_id[:8]}...{Colors.ENDC}")
-            print(f"{Colors.CYAN}Model: {Colors.BOLD}{model_name}{Colors.ENDC}\n")
-
-            return self.config
-
-        except yaml.YAMLError as e:
-            print_error(f"Error parsing config: {e}")
-            return None
-        except Exception as e:
-            print_error(f"Error loading configuration: {e}")
-            logger.error(f"Config load error: {e}", exc_info=True)
-            return None
-
-    def validate_hardware(self) -> bool:
-        """Validate that current hardware meets requirements"""
-        if not self.config:
-            return False
-
-        show_spinner("Validating hardware requirements...", 1.0)
-
-        model_ram = self.config["model"]["ram_required"]
-        system_ram = psutil.virtual_memory().total / (1024**3)
-
-        print(f"{Colors.CYAN}Model requires: {Colors.BOLD}{model_ram}GB RAM{Colors.ENDC}")
-        print(f"{Colors.CYAN}System has: {Colors.BOLD}{system_ram:.1f}GB RAM{Colors.ENDC}")
-
-        if system_ram < model_ram:
-            print_warning(f"Model requires {model_ram}GB RAM, you have {system_ram:.1f}GB")
-            response = (
-                input(f"{Colors.YELLOW}Continue anyway? [y/N]: {Colors.ENDC}").strip().lower()
-            )
-            return response == "y"
-
-        print_success("Hardware requirements met")
-        return True
-
-
-class DockerManager:
-    """Manage Docker services"""
-
-    def __init__(self, config: Dict, project_dir: Path):
-        self.config = config
-        self.project_dir = project_dir
-        self.compose_file = project_dir / "infra" / "docker-compose.yml"
-
-    def verify_compose_file(self) -> bool:
-        """Verify that docker-compose.yml exists"""
-        try:
-            show_spinner("Verifying docker-compose.yml...", 1.0)
-
-            if not self.compose_file.exists():
-                print_error("docker-compose.yml not found")
-                print_info("Run 'acolyte init' first to create docker-compose.yml")
-                return False
-
-            print_success("docker-compose.yml found")
-            return True
-
-        except Exception as e:
-            print_error(f"Error verifying docker-compose.yml: {e}")
-            logger.error(f"Docker compose verification error: {e}", exc_info=True)
-            return False
-
-    async def start_services(self) -> bool:
-        """Start Docker services"""
-        try:
-            print_info("Starting Docker services...")
-
-            # Animated starting sequence
-            services = ["weaviate", "ollama", "backend"]
-            for i, service in enumerate(services):
-                show_spinner(f"Starting {service}...", 1.0)
-                print_progress_bar(
-                    i + 1,
-                    len(services),
-                    prefix="Starting:",
-                    suffix=f"Service: {service}",
-                    length=30,
+            except IOError as e:
+                # Log file reading errors with context
+                logger.error(
+                    "Failed to read package.json",
+                    path=str(self.project_path / "package.json"),
+                    error=str(e),
+                )
+            except Exception as e:
+                # Log any other unexpected error
+                logger.error(
+                    "Unexpected error reading package.json",
+                    path=str(self.project_path / "package.json"),
+                    error=str(e),
                 )
 
-            # Change to infra directory for docker-compose
-            os.chdir(self.compose_file.parent)
+        # More backend languages
+        if (self.project_path / "go.mod").exists():
+            stack["backend"].append("Go")
+        if (self.project_path / "Cargo.toml").exists():
+            stack["backend"].append("Rust")
+        if (self.project_path / "pom.xml").exists() or (
+            self.project_path / "build.gradle"
+        ).exists():
+            stack["backend"].append("Java")
+        if (self.project_path / "composer.json").exists():
+            stack["backend"].append("PHP")
+        if (self.project_path / "Gemfile").exists():
+            stack["backend"].append("Ruby")
 
-            process = await asyncio.create_subprocess_exec(
-                "docker-compose",
-                "up",
-                "-d",
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
+        # Database files
+        if any(
+            (self.project_path / f).exists() for f in ["docker-compose.yml", "docker-compose.yaml"]
+        ):
+            # Parse docker-compose for databases
+            try:
+                with open(self.project_path / "docker-compose.yml") as f:
+                    compose = yaml.safe_load(f)
+                    services = compose.get("services", {})
 
-            # Show progress during docker compose execution
-            print_info("Building and starting containers...")
-            with tqdm(
-                desc=f"{Colors.CYAN}Docker compose progress{Colors.ENDC}",
-                bar_format="{l_bar}%s{bar}%s{r_bar}" % (Colors.CYAN, Colors.ENDC),
-            ) as pbar:
-                while True:
-                    line = await process.stdout.readline()
-                    if not line:
-                        break
-                    output = line.decode().strip()
-                    if output:
-                        # Update description with current action
-                        if "Creating" in output:
-                            pbar.set_description_str(
-                                f"{Colors.CYAN}Creating containers{Colors.ENDC}"
-                            )
-                        elif "Starting" in output:
-                            pbar.set_description_str(
-                                f"{Colors.CYAN}Starting containers{Colors.ENDC}"
-                            )
-                        elif "Building" in output:
-                            pbar.set_description_str(f"{Colors.CYAN}Building images{Colors.ENDC}")
-                        pbar.update(1)
-                        pbar.set_postfix_str(output[:50] + "..." if len(output) > 50 else output)
+                    if any("postgres" in s for s in services):
+                        stack["database"].append("PostgreSQL")
+                    if any("mysql" in s or "mariadb" in s for s in services):
+                        stack["database"].append("MySQL/MariaDB")
+                    if any("mongo" in s for s in services):
+                        stack["database"].append("MongoDB")
+                    if any("redis" in s for s in services):
+                        stack["database"].append("Redis")
+            except (yaml.YAMLError, IOError) as e:
+                # Log YAML or IO errors with context
+                logger.error(
+                    "Failed to read docker-compose.yml",
+                    path=str(self.project_path / "docker-compose.yml"),
+                    error=str(e),
+                )
+            except Exception as e:
+                # Log any other unexpected error
+                logger.error(
+                    "Unexpected error reading docker-compose.yml",
+                    path=str(self.project_path / "docker-compose.yml"),
+                    error=str(e),
+                )
 
-            stdout, stderr = await process.communicate()
+        # Tools
+        if (self.project_path / ".git").exists():
+            stack["tools"].append("Git")
+        if (self.project_path / "Dockerfile").exists() or (
+            self.project_path / "docker-compose.yml"
+        ).exists():
+            stack["tools"].append("Docker")
+        if (self.project_path / ".github" / "workflows").exists():
+            stack["tools"].append("GitHub Actions")
+        if (self.project_path / ".gitlab-ci.yml").exists():
+            stack["tools"].append("GitLab CI")
+        if (self.project_path / "Jenkinsfile").exists():
+            stack["tools"].append("Jenkins")
 
-            if process.returncode == 0:
-                print_success("Docker services started")
-                # Wait for services to be ready
-                await self._wait_for_services()
-                return True
-            else:
-                print_error(f"Failed to start services: {stderr.decode()}")
-                return False
+        # Remove duplicates
+        for key in stack:
+            stack[key] = list(dict.fromkeys(stack[key]))
 
-        except Exception as e:
-            print_error(f"Error starting Docker services: {e}")
-            return False
+        return stack
 
-    async def _wait_for_services(self):
-        """Wait for services to be ready"""
-        print_info("Waiting for services to be ready...")
+    def _edit_stack(self, stack: Dict[str, List[str]]) -> Dict[str, List[str]]:
+        """Allow user to edit detected stack"""
+        print_header("✏️ Edit Technology Stack")
 
-        # Get ports from config
-        ports = self.config.get("ports", {})
-        weaviate_port = ports.get("weaviate", 8080)
-        ollama_port = ports.get("ollama", 11434)
-        backend_port = ports.get("backend", 8000)
-
-        checks = {
-            "Weaviate": (f"http://localhost:{weaviate_port}/v1/.well-known/ready", 30),
-            "Ollama": (f"http://localhost:{ollama_port}/api/tags", 30),
-            "Backend": (
-                f"http://localhost:{backend_port}/api/health",
-                45,
-            ),  # Backend takes longer
+        # Common technologies
+        common_tech = {
+            "backend": ["Python", "Node.js", "Go", "Rust", "Java", "C#", "PHP", "Ruby", "Elixir"],
+            "frontend": [
+                "React",
+                "Vue.js",
+                "Angular",
+                "Svelte",
+                "Next.js",
+                "Nuxt.js",
+                "HTML/CSS",
+                "TypeScript",
+                "JavaScript",
+            ],
+            "database": [
+                "PostgreSQL",
+                "MySQL",
+                "MongoDB",
+                "Redis",
+                "SQLite",
+                "Cassandra",
+                "Elasticsearch",
+            ],
+            "tools": [
+                "Git",
+                "Docker",
+                "Kubernetes",
+                "Jenkins",
+                "GitHub Actions",
+                "GitLab CI",
+                "CircleCI",
+            ],
         }
 
-        import aiohttp
+        for category in ["backend", "frontend", "database", "tools"]:
+            print(f"\n{Colors.CYAN}{category.capitalize()} Technologies:{Colors.ENDC}")
+            print(f"Current: {', '.join(stack[category]) if stack[category] else 'None'}")
+            print("\nAvailable options:")
 
-        async with aiohttp.ClientSession() as session:
-            for service, (url, timeout) in checks.items():
-                print(f"{Colors.CYAN}Waiting for {service}...{Colors.ENDC}")
+            for i, tech in enumerate(common_tech[category], 1):
+                status = "✓" if tech in stack[category] else " "
+                print(f"  {i}. [{status}] {tech}")
 
-                start_time = time.time()
-                with tqdm(
-                    total=timeout,
-                    desc=f"Waiting for {service}",
-                    bar_format="{l_bar}%s{bar}%s{r_bar}" % (Colors.CYAN, Colors.ENDC),
-                ) as pbar:
-                    while time.time() - start_time < timeout:
-                        try:
-                            async with session.get(
-                                url, timeout=aiohttp.ClientTimeout(total=2)
-                            ) as resp:
-                                if resp.status == 200:
-                                    pbar.update(timeout - pbar.n)  # Fill the bar
-                                    print_success(f"{service} is ready")
-                                    break
-                        except Exception:
-                            pass
-
-                        # Show random consciousness tip
-                        if random.random() < 0.2:  # 20% chance
-                            tip = random.choice(CONSCIOUSNESS_TIPS)
-                            # Clear current line and show tip above progress bar
-                            print(f"\r{' ' * 80}\r", end="")  # Clear line
-                            print(f"{Colors.YELLOW}💭 {tip}{Colors.ENDC}")
-                            pbar.refresh()  # Redraw progress bar
-
-                        await asyncio.sleep(1)
-                        pbar.update(1)
-                    else:
-                        print_warning(f"{service} not ready after {timeout}s")
-
-
-class OllamaManager:
-    """Manage Ollama models"""
-
-    def __init__(self, model_name: str, project_dir: Path):
-        self.model_name = model_name
-        self.modelfile_path = project_dir / "infra" / "Modelfile"
-
-    def verify_modelfile(self) -> bool:
-        """Verify that Modelfile exists"""
-        try:
-            show_spinner("Verifying Modelfile...", 1.0)
-
-            if not self.modelfile_path.exists():
-                print_error("Modelfile not found")
-                print_info("Run 'acolyte init' first to create Modelfile")
-                return False
-
-            print_success("Modelfile found")
-            return True
-
-        except Exception as e:
-            print_error(f"Error verifying Modelfile: {e}")
-            logger.error(f"Modelfile verification error: {e}", exc_info=True)
-            return False
-
-    async def pull_model(self) -> bool:
-        """Pull the specified model"""
-        try:
-            print_info(f"Downloading model: {self.model_name}")
-
-            # Extract base model name (without acolyte prefix)
-            base_model = self.model_name
-
-            process = await asyncio.create_subprocess_exec(
-                "docker",
-                "exec",
-                "acolyte-ollama",
-                "ollama",
-                "pull",
-                base_model,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
+            print(
+                f"\n{Colors.YELLOW}Enter numbers to toggle (comma-separated), or press Enter to continue:{Colors.ENDC}"
             )
+            choices = input("> ").strip()
 
-            # Show progress with consciousness tips
-            with tqdm(
-                desc=f"{Colors.CYAN}Downloading model{Colors.ENDC}",
-                unit="MB",
-                unit_scale=True,
-                bar_format="{l_bar}%s{bar}%s{r_bar}" % (Colors.CYAN, Colors.ENDC),
-            ) as pbar:
-                while True:
-                    line = await process.stdout.readline()
-                    if not line:
-                        break
+            if choices:
+                for choice in choices.split(','):
+                    try:
+                        idx = int(choice.strip()) - 1
+                        if 0 <= idx < len(common_tech[category]):
+                            tech = common_tech[category][idx]
+                            if tech in stack[category]:
+                                stack[category].remove(tech)
+                            else:
+                                stack[category].append(tech)
+                    except (ValueError, IndexError) as e:
+                        # Log expected user input errors for debugging
+                        logger.warning(
+                            "Invalid technology selection during stack edit",
+                            choice=choice,
+                            category=category,
+                            error=str(e),
+                        )
+                    except Exception as e:
+                        # Log any truly unexpected error
+                        logger.error(
+                            "Unexpected error during technology stack edit",
+                            choice=choice,
+                            category=category,
+                            error=str(e),
+                        )
+                        raise
 
-                    output = line.decode().strip()
-                    if output:
-                        # Update progress bar
-                        if "pulling" in output.lower():
-                            # Show random consciousness tip above progress bar
-                            tip = random.choice(CONSCIOUSNESS_TIPS)
-                            print(f"\n{Colors.YELLOW}💭 {tip}{Colors.ENDC}")
-                            pbar.refresh()
+        return stack
 
-                        # Extract progress if possible
-                        if "%" in output:
-                            try:
-                                import re
 
-                                match = re.search(r"(\d+)%", output)
-                                if match:
-                                    percent = int(match.group(1))
-                                    pbar.n = percent
-                                    pbar.refresh()
-                            except Exception:
-                                pass
+class AdvancedConfiguration:
+    """Advanced configuration options"""
 
-            # Get any error output
-            _, stderr = await process.communicate()
+    def __init__(self, hardware: Dict[str, Any]):
+        self.hardware = hardware
 
-            if process.returncode == 0:
-                print_success(f"Model {base_model} downloaded")
-                return True
+    def configure_model(self) -> Dict[str, Any]:
+        """Configure AI model selection"""
+        print_header("🤖 AI Model Configuration")
+
+        ram_gb = self.hardware["ram_gb"]
+        gpu_info = self.hardware.get("gpu")
+
+        # Get recommendation
+        recommended = ModelRecommender.recommend(ram_gb, gpu_info)
+
+        print(f"\n{Colors.CYAN}Available models for your system:{Colors.ENDC}")
+        print(f"System RAM: {ram_gb}GB")
+        if gpu_info:
+            print(f"GPU: {gpu_info['name']} ({gpu_info['vram_mb']}MB VRAM)")
+
+        models = []
+        default_choice = "1"
+
+        print(f"\n{Colors.YELLOW}Models:{Colors.ENDC}")
+        for i, (key, info) in enumerate(ModelRecommender.MODELS.items(), 1):
+            is_recommended = key == recommended
+
+            model_name = info.get("ollama_model", f"qwen2.5-coder:{key}")
+            status = f" {Colors.GREEN}(recommended){Colors.ENDC}" if is_recommended else ""
+            compatibility = self._check_model_compatibility(info, ram_gb, gpu_info)
+
+            print(f"\n  {i}. {Colors.BOLD}{model_name}{Colors.ENDC}{status}")
+            print(f"     Size: {info['size']} parameters")
+            print(f"     RAM required: {info['ram_min']}GB minimum")
+            context_val = info.get('context')
+            if isinstance(context_val, (int, float)):
+                print(f"     Context window: {int(context_val) // 1024}k tokens")
             else:
-                error_msg = stderr.decode() if stderr else "Unknown error"
-                print_error(f"Failed to download model: {error_msg}")
-                # Try to provide helpful suggestions
-                if "not found" in error_msg.lower():
-                    print_info("Model might not exist. Check model name.")
-                elif "connection" in error_msg.lower():
-                    print_info("Network issue. Check internet connection.")
-                return False
+                print("     Context window: unknown")
+            print(f"     {compatibility}")
 
-        except Exception as e:
-            print_error(f"Error downloading model: {e}")
-            logger.error(f"Ollama pull error: {e}", exc_info=True)
-            return False
+            models.append((key, info))
+            if is_recommended:
+                default_choice = str(i)
 
-    async def create_acolyte_model(self) -> bool:
-        """Create ACOLYTE model with custom configuration"""
+        # Custom model option
+        print(f"\n  {len(models) + 1}. {Colors.BOLD}Custom model{Colors.ENDC}")
+        print("     Specify your own Ollama model")
+
+        while True:
+            choice = (
+                input(f"\n{Colors.CYAN}Select model [{default_choice}]: {Colors.ENDC}").strip()
+                or default_choice
+            )
+
+            try:
+                idx = int(choice) - 1
+
+                if idx == len(models):  # Custom model
+                    return self._configure_custom_model()
+                elif 0 <= idx < len(models):
+                    selected_key, selected_info = models[idx]
+
+                    # Warn if system doesn't meet requirements
+                    if ram_gb < selected_info["ram_min"]:
+                        print_warning(
+                            f"Your system has {ram_gb}GB RAM but this model requires {selected_info['ram_min']}GB"
+                        )
+                        confirm = input("Continue anyway? [y/N]: ").strip().lower()
+                        if confirm != 'y':
+                            continue
+
+                    return {
+                        "name": selected_info.get("ollama_model", f"qwen2.5-coder:{selected_key}"),
+                        "size": selected_info["size"],
+                        "context_size": selected_info["context"],
+                        "ram_required": selected_info["ram_min"],
+                    }
+                else:
+                    print_warning("Invalid selection")
+            except ValueError:
+                print_warning("Please enter a number")
+
+    def _check_model_compatibility(
+        self, model_info: Dict, ram_gb: int, gpu_info: Optional[Dict]
+    ) -> str:
+        """Check model compatibility with system"""
+        ram_req = model_info["ram_min"]
+
+        if ram_gb >= ram_req * 1.5:
+            return f"{Colors.GREEN}✓ Excellent performance expected{Colors.ENDC}"
+        elif ram_gb >= ram_req:
+            return f"{Colors.YELLOW}✓ Should run well{Colors.ENDC}"
+        elif ram_gb >= ram_req * 0.8:
+            return f"{Colors.YELLOW}⚠ May run with reduced performance{Colors.ENDC}"
+        else:
+            return f"{Colors.RED}✗ Insufficient RAM - not recommended{Colors.ENDC}"
+
+    def _configure_custom_model(self) -> Dict[str, Any]:
+        """Configure a custom Ollama model"""
+        print_header("🔧 Custom Model Configuration")
+
+        print(f"\n{Colors.CYAN}Enter custom Ollama model name:{Colors.ENDC}")
+        print(f"{Colors.YELLOW}Examples: llama2:13b, mixtral:8x7b, codellama:34b{Colors.ENDC}")
+
+        model_name = input("Model name: ").strip()
+        if not model_name:
+            print_warning("Model name cannot be empty")
+            return self.configure_model()
+
+        # Get context size
+        print(f"\n{Colors.CYAN}Context size (in tokens):{Colors.ENDC}")
+        print(f"{Colors.YELLOW}Common values: 4096, 8192, 16384, 32768{Colors.ENDC}")
+
+        while True:
+            try:
+                context_size = int(input("Context size [32768]: ").strip() or "32768")
+                if context_size < 512:
+                    print_warning("Context size should be at least 512")
+                    continue
+                break
+            except ValueError:
+                print_warning("Please enter a number")
+
+        # Estimate RAM requirement
+        print(f"\n{Colors.CYAN}Minimum RAM requirement (GB):{Colors.ENDC}")
+
+        while True:
+            try:
+                ram_required = int(input("RAM required [8]: ").strip() or "8")
+                if ram_required < 1:
+                    print_warning("RAM requirement should be at least 1GB")
+                    continue
+                break
+            except ValueError:
+                print_warning("Please enter a number")
+
+        return {
+            "name": model_name,
+            "size": "custom",
+            "context_size": context_size,
+            "ram_required": ram_required,
+        }
+
+    def configure_ports(self) -> Dict[str, int]:
+        """Configure service ports with smart defaults"""
+        print_header("🔌 Port Configuration")
+
+        print(f"\n{Colors.CYAN}ACOLYTE uses dedicated port ranges to avoid conflicts:{Colors.ENDC}")
+        print("• Weaviate (vector DB): 42080-42099")
+        print("• Ollama (AI model): 42434-42453")
+        print("• Backend API: 42000-42019")
+
+        port_manager = PortManager()
+
+        # Try to find available ports automatically
         try:
-            print_info("Creating ACOLYTE model with consciousness features...")
+            auto_weaviate, auto_ollama, auto_backend = port_manager.find_available_ports()
+            print_success("\nFound available ports automatically:")
+            print(f"  Weaviate: {auto_weaviate}")
+            print(f"  Ollama: {auto_ollama}")
+            print(f"  Backend: {auto_backend}")
 
-            # Check if Modelfile exists
-            if not self.modelfile_path.exists():
-                print_error("Modelfile not found")
-                return False
-
-            # Copy Modelfile to container with animation
-            show_spinner("Copying Modelfile to container...", 1.0)
-            subprocess.run(
-                [
-                    "docker",
-                    "cp",
-                    str(self.modelfile_path),
-                    "acolyte-ollama:/tmp/Modelfile",
-                ],
-                check=True,
+            use_auto = (
+                input(f"\n{Colors.CYAN}Use these ports? [Y/n]: {Colors.ENDC}").strip().lower()
             )
+            if use_auto != 'n':
+                return {"weaviate": auto_weaviate, "ollama": auto_ollama, "backend": auto_backend}
+        except RuntimeError:
+            print_warning("Could not find all available ports automatically")
+            auto_weaviate, auto_ollama, auto_backend = 42080, 42434, 42000
 
-            # Create model with animation
-            show_spinner("Creating ACOLYTE model...", 1.0)
-            process = await asyncio.create_subprocess_exec(
-                "docker",
-                "exec",
-                "acolyte-ollama",
-                "ollama",
-                "create",
-                "acolyte",
-                "-f",
-                "/tmp/Modelfile",
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
+        # Manual configuration
+        print(f"\n{Colors.CYAN}Configure ports manually:{Colors.ENDC}")
+        ports = {}
 
-            # Show fancy animation during model creation
-            frames = ["🧠", "💭", "✨", "🔮", "💫", "⚡", "🌟", "💡"]
-            i = 0
-            while process.returncode is None:
-                frame = frames[i % len(frames)]
-                sys.stdout.write(f"\r{frame} Creating ACOLYTE model with consciousness... {frame}")
-                sys.stdout.flush()
-                await asyncio.sleep(0.1)
-                i += 1
+        # Weaviate
+        ports["weaviate"] = self._configure_single_port(
+            "Weaviate", auto_weaviate, port_manager, "weaviate"
+        )
 
-                # Check if process has finished
+        # Ollama
+        ports["ollama"] = self._configure_single_port("Ollama", auto_ollama, port_manager, "ollama")
+
+        # Backend
+        ports["backend"] = self._configure_single_port(
+            "Backend API", auto_backend, port_manager, "backend"
+        )
+
+        return ports
+
+    def _configure_single_port(
+        self, service: str, default: int, port_manager: PortManager, service_key: str
+    ) -> int:
+        """Configure a single port with validation"""
+        while True:
+            port_input = input(f"{service} port [{default}]: ").strip()
+
+            if not port_input:
+                port = default
+            else:
                 try:
-                    await asyncio.wait_for(process.wait(), timeout=0.1)
-                    break
-                except asyncio.TimeoutError:
+                    port = int(port_input)
+                except ValueError:
+                    print_warning("Please enter a valid port number")
                     continue
 
-            stdout, stderr = await process.communicate()
+            # Validate port using the standalone function
+            if not validate_port(port):
+                # Suggest next available port using PortManager
+                suggested = PortManager.find_next_available(port)
+                if suggested:
+                    print_warning(f"Port {port} is not available. Suggested: {suggested}")
+                    use_suggested = input("Use suggested port? [Y/n]: ").strip().lower()
+                    if use_suggested != 'n':
+                        return suggested
+                else:
+                    print_error(f"Port {port} is not available and no alternatives found")
+                    logger.error(
+                        "No available port found for service", service=service, requested_port=port
+                    )
+                continue
 
-            if process.returncode == 0:
-                print("\r" + " " * 60 + "\r", end="")  # Clear line
-                print_success("ACOLYTE model created with consciousness capabilities")
-                return True
-            else:
-                print("\r" + " " * 60 + "\r", end="")  # Clear line
-                print_error(f"Failed to create ACOLYTE model: {stderr.decode()}")
-                return False
+            return port
 
-        except Exception as e:
-            print_error(f"Error creating ACOLYTE model: {e}")
-            return False
+    def configure_resources(self, hardware: Dict[str, Any]) -> Dict[str, Any]:
+        """Configure Docker resource limits"""
+        print_header("🐳 Resource Configuration")
+
+        ram_gb = hardware["ram_gb"]
+        cpu_threads = hardware["cpu_threads"]
+
+        print(f"\n{Colors.CYAN}System resources:{Colors.ENDC}")
+        print(f"• Total RAM: {ram_gb}GB")
+        print(f"• CPU threads: {cpu_threads}")
+
+        # Docker memory
+        default_memory = max(4, ram_gb // 2)
+        print(f"\n{Colors.CYAN}Docker memory limit (GB):{Colors.ENDC}")
+        print(f"{Colors.YELLOW}Recommended: 50% of system RAM{Colors.ENDC}")
+
+        while True:
+            memory_input = input(f"Memory limit [{default_memory}]: ").strip()
+            if not memory_input:
+                docker_memory = default_memory
+                break
+
+            try:
+                docker_memory = int(memory_input)
+                if docker_memory < 2:
+                    print_warning("Minimum 2GB required for ACOLYTE")
+                    continue
+                if docker_memory > ram_gb:
+                    print_warning(f"Cannot exceed system RAM ({ram_gb}GB)")
+                    continue
+                break
+            except ValueError:
+                print_warning("Please enter a number")
+
+        # Docker CPUs
+        default_cpus = max(2, cpu_threads // 2)
+        print(f"\n{Colors.CYAN}Docker CPU limit:{Colors.ENDC}")
+        print(f"{Colors.YELLOW}Recommended: 50% of CPU threads{Colors.ENDC}")
+
+        while True:
+            cpu_input = input(f"CPU limit [{default_cpus}]: ").strip()
+            if not cpu_input:
+                docker_cpus = default_cpus
+                break
+
+            try:
+                docker_cpus = int(cpu_input)
+                if docker_cpus < 1:
+                    print_warning("Minimum 1 CPU required")
+                    continue
+                if docker_cpus > cpu_threads:
+                    print_warning(f"Cannot exceed system threads ({cpu_threads})")
+                    continue
+                break
+            except ValueError:
+                print_warning("Please enter a number")
+
+        return {
+            "memory_limit": f"{docker_memory}G",
+            "cpu_limit": str(docker_cpus),
+            "gpu_enabled": bool(hardware.get("gpu")),
+        }
 
 
-class ProjectIndexer:
-    """Index project code into Weaviate"""
+class LanguageConfiguration:
+    """Configure language-specific settings"""
 
-    def __init__(self, project_path: Path, config: Dict):
-        self.project_path = Path(project_path)
-        self.config = config
+    LINTERS = {
+        "python": [
+            {"linter": "ruff", "formatter": "black", "name": "Ruff + Black (fast & modern)"},
+            {
+                "linter": "flake8",
+                "formatter": "autopep8",
+                "name": "Flake8 + autopep8 (traditional)",
+            },
+            {"linter": "pylint", "formatter": "yapf", "name": "Pylint + YAPF (comprehensive)"},
+            {"linter": "mypy", "formatter": "isort", "name": "MyPy + isort (type checking)"},
+        ],
+        "javascript": [
+            {"linter": "eslint", "formatter": "prettier", "name": "ESLint + Prettier (standard)"},
+            {"linter": "standard", "formatter": "standard", "name": "StandardJS (opinionated)"},
+            {"linter": "jshint", "formatter": "js-beautify", "name": "JSHint + Beautify (classic)"},
+        ],
+        "typescript": [
+            {
+                "linter": "eslint",
+                "formatter": "prettier",
+                "name": "ESLint + Prettier (recommended)",
+            },
+            {"linter": "tslint", "formatter": "prettier", "name": "TSLint + Prettier (legacy)"},
+            {"linter": "deno", "formatter": "deno", "name": "Deno lint + fmt (modern)"},
+        ],
+        "go": [
+            {
+                "linter": "golangci-lint",
+                "formatter": "gofmt",
+                "name": "golangci-lint + gofmt (standard)",
+            },
+            {"linter": "go-vet", "formatter": "goimports", "name": "go vet + goimports"},
+            {
+                "linter": "staticcheck",
+                "formatter": "gofumpt",
+                "name": "staticcheck + gofumpt (strict)",
+            },
+        ],
+        "rust": [
+            {"linter": "clippy", "formatter": "rustfmt", "name": "Clippy + rustfmt (official)"},
+            {"linter": "rust-analyzer", "formatter": "rustfmt", "name": "rust-analyzer + rustfmt"},
+        ],
+    }
 
-    async def index_project(self) -> bool:
-        """Index the project"""
+    def __init__(self, project_path: Path):
+        self.project_path = project_path
+
+    def detect_languages(self) -> List[str]:
+        """Detect programming languages in project"""
+        languages = set()
+        extensions_map = {
+            ".py": "python",
+            ".js": "javascript",
+            ".jsx": "javascript",
+            ".ts": "typescript",
+            ".tsx": "typescript",
+            ".go": "go",
+            ".rs": "rust",
+            ".java": "java",
+            ".c": "c",
+            ".cpp": "cpp",
+            ".cc": "cpp",
+            ".h": "c",
+            ".cs": "csharp",
+            ".rb": "ruby",
+            ".php": "php",
+        }
+
         try:
-            print_info("Indexing project files...")
-
-            # Use the API to trigger indexing
-            ports = self.config.get('ports', {})
-            backend_port = ports.get('backend', 8000)
-
-            import aiohttp
-
-            async with aiohttp.ClientSession() as session:
-                # Trigger full indexing via API
-                async with session.post(
-                    f"http://localhost:{backend_port}/api/index/project",
-                    json={
-                        "force_reindex": True,
-                        "respect_gitignore": True,
-                        "respect_acolyteignore": True,
-                    },
-                ) as resp:
-                    if resp.status == 200:
-                        result = await resp.json()
-                        task_id = result.get('task_id')
-
-                        print_success(f"Indexing started with task ID: {task_id}")
-                        print_info("You can monitor progress via WebSocket or wait for completion")
-
-                        # Simple progress simulation
-                        with tqdm(
-                            total=100,
-                            desc=f"{Colors.CYAN}Indexing files{Colors.ENDC}",
-                            bar_format="{l_bar}%s{bar}%s{r_bar}" % (Colors.CYAN, Colors.ENDC),
-                        ) as pbar:
-                            for i in range(100):
-                                await asyncio.sleep(0.1)
-                                pbar.update(1)
-
-                                # Show consciousness tip occasionally
-                                if i % 20 == 0:
-                                    tip = random.choice(CONSCIOUSNESS_TIPS)
-                                    print(f"\n{Colors.YELLOW}💭 {tip}{Colors.ENDC}")
-                                    pbar.refresh()
-
-                        print_success("Project indexing completed")
-                        return True
-                    else:
-                        error = await resp.text()
-                        print_error(f"Indexing failed: {error}")
-                        return False
-
+            for ext, lang in extensions_map.items():
+                if list(self.project_path.rglob(f"*{ext}")):
+                    languages.add(lang)
         except Exception as e:
-            print_error(f"Error indexing project: {e}")
-            logger.error(f"Indexing error: {e}", exc_info=True)
-            return False
+            logger.error("Error detecting languages", error=str(e))
+
+        return sorted(list(languages))
+
+    def configure_linters(self, languages: List[str]) -> Dict[str, Dict[str, str]]:
+        """Configure linters for detected languages"""
+        print_header("🔧 Code Quality Tools Configuration")
+
+        if not languages:
+            print_info("No programming languages detected")
+            return {}
+
+        print(f"\n{Colors.CYAN}Detected languages:{Colors.ENDC} {', '.join(languages)}")
+
+        configure = (
+            input(f"\n{Colors.CYAN}Configure linters and formatters? [Y/n]: {Colors.ENDC}")
+            .strip()
+            .lower()
+        )
+        if configure == 'n':
+            return {}
+
+        linter_config = {}
+
+        for lang in languages:
+            if lang not in self.LINTERS:
+                continue
+
+            print(f"\n{Colors.BOLD}Configuration for {lang.upper()}:{Colors.ENDC}")
+            options = self.LINTERS[lang]
+
+            for i, opt in enumerate(options, 1):
+                print(f"  {i}. {opt['name']}")
+
+            print(f"  {len(options) + 1}. Skip (no linting for {lang})")
+
+            while True:
+                choice = input("\nSelect option [1]: ").strip() or "1"
+
+                try:
+                    idx = int(choice) - 1
+                    if idx == len(options):  # Skip
+                        break
+                    elif 0 <= idx < len(options):
+                        selected = options[idx]
+                        linter_config[lang] = {
+                            "linter": selected["linter"],
+                            "formatter": selected["formatter"],
+                        }
+                        print_success(f"Selected: {selected['name']}")
+                        break
+                    else:
+                        print_warning("Invalid option")
+                except ValueError:
+                    print_warning("Please enter a number")
+
+        return linter_config
+
+    def configure_ignore_patterns(self) -> List[str]:
+        """Configure additional ignore patterns"""
+        print_header("📁 File Exclusion Configuration")
+
+        print(f"\n{Colors.CYAN}ACOLYTE automatically ignores common patterns:{Colors.ENDC}")
+        print("• Version control: .git/, .svn/")
+        print("• Dependencies: node_modules/, venv/, vendor/")
+        print("• Build outputs: dist/, build/, target/")
+        print("• IDE files: .vscode/, .idea/")
+        print("• Cache: __pycache__/, .cache/")
+
+        print(f"\n{Colors.CYAN}Add custom folders/patterns to ignore?{Colors.ENDC}")
+        print(f"{Colors.YELLOW}Examples: logs/, *.log, temp/, secrets/{Colors.ENDC}")
+
+        custom_patterns = []
+        print("\nEnter patterns (one per line, empty line to finish):")
+
+        while True:
+            pattern = input("> ").strip()
+            if not pattern:
+                break
+            custom_patterns.append(pattern)
+            print_success(f"Added: {pattern}")
+
+        return custom_patterns
 
 
-class AcolyteInstaller:
-    """Main installer class"""
+class InstallationOrchestrator:
+    """Orchestrate the complete installation process"""
 
-    def __init__(self):
-        self.project_dir = Path(GLOBAL_DIR) / "projects" / PROJECT_ID
-        self.config_path = self.project_dir / "config.yaml"
-        self.config = None
-        self.project_path = Path(PROJECT_PATH)
+    def __init__(self, project_path: Path):
+        self.project_path = project_path
+        self.project_file = project_path / ".acolyte.project"
+        self.global_dir = Path.home() / ".acolyte"
+
+        # Load project info
+        if not self.project_file.exists():
+            raise FileNotFoundError("Project not initialized. Run 'acolyte init' first.")
+
+        with open(self.project_file) as f:
+            project_data = json.load(f)
+
+        self.project_id = project_data["project_id"]
+        self.project_global_dir = self.global_dir / "projects" / self.project_id
+        self.config_path = self.project_global_dir / ".acolyte"
 
     async def install(self):
         """Run the complete installation process"""
-        # Show logo with animation
-        print(ACOLYTE_LOGO)
-        animate_text(
-            f"{Colors.CYAN}{Colors.BOLD}ACOLYTE INSTALL - Installation Process{Colors.ENDC}",
-            duration=1.0,
+        try:
+            # Show header
+            print(ACOLYTE_LOGO)
+            animate_text(
+                f"{Colors.CYAN}{Colors.BOLD}ACOLYTE INSTALL - Interactive Configuration{Colors.ENDC}",
+                duration=1.0,
+            )
+            print("\n")
+
+            # Check if already configured
+            if self.config_path.exists():
+                print_warning("ACOLYTE is already configured for this project")
+                reconfigure = input("Reconfigure? [y/N]: ").strip().lower()
+                if reconfigure != 'y':
+                    print_info("Installation cancelled")
+                    return
+
+            # Collect all configuration
+            config = await self._collect_configuration()
+
+            # Show summary
+            self._show_configuration_summary(config)
+
+            # Confirm
+            confirm = (
+                input(f"\n{Colors.YELLOW}Proceed with installation? [Y/n]: {Colors.ENDC}")
+                .strip()
+                .lower()
+            )
+            if confirm == 'n':
+                print_warning("Installation cancelled")
+                return
+
+            # Save configuration
+            print_header("💾 Saving Configuration")
+            self._save_configuration(config)
+
+            # Generate Docker files
+            print_header("🐳 Generating Docker Infrastructure")
+            self._generate_docker_files(config)
+
+            # Generate Modelfile
+            print_header("🤖 Creating Model Configuration")
+            self._generate_modelfile(config)
+
+            # Initialize database
+            print_header("🗄️ Initializing Database")
+            self._initialize_database(config)
+
+            # Show completion
+            self._show_completion()
+
+        except AcolyteError:
+            # Re-raise our own exceptions
+            raise
+        except Exception as e:
+            # Wrap unexpected exceptions
+            print_error(f"Installation failed: {e}")
+            logger.error("Installation error", error=str(e), include_trace=True)
+            raise AcolyteError("Installation failed due to unexpected error", cause=e)
+
+    async def _collect_configuration(self) -> Dict[str, Any]:
+        """Collect all configuration from user"""
+        # Hardware detection
+        print_header("🖥️ Hardware Detection")
+        print_info("Detecting system capabilities...")
+        show_spinner("Analyzing hardware", 1.5)
+
+        detector = SystemDetector()
+        os_name, os_version = detector.detect_os()
+        cpu_info = detector.detect_cpu()
+        ram_gb = detector.detect_memory()
+        gpu_info = detector.detect_gpu()
+        disk_gb = detector.detect_disk_space()
+
+        hardware = {
+            "os": os_name,
+            "os_version": os_version,
+            "cpu_cores": cpu_info["cores"],
+            "cpu_threads": cpu_info["threads"],
+            "cpu_model": cpu_info["model"],
+            "ram_gb": ram_gb,
+            "disk_free_gb": disk_gb,
+        }
+
+        if gpu_info:
+            hardware["gpu"] = gpu_info
+
+        # Show detected hardware
+        print_success("Hardware detected:")
+        print(f"  OS: {os_name} {os_version}")
+        print(
+            f"  CPU: {cpu_info['model']} ({cpu_info['cores']} cores, {cpu_info['threads']} threads)"
         )
-        print("\n")
+        print(f"  RAM: {ram_gb}GB")
+        if gpu_info:
+            print(f"  GPU: {gpu_info['name']} ({gpu_info['vram_mb']}MB VRAM)")
+        print(f"  Free disk: {disk_gb}GB")
 
-        # Step 1: Check requirements
-        print_step(1, 7, "System Requirements")
-        requirements = RequirementsChecker.check_all()
-        if not all(success for success, _ in requirements.values()):
-            print_error("Some requirements are not met")
-            return False
+        # Collect user info
+        info_collector = ProjectInfoCollector(self.project_path)
+        user_name = info_collector.collect_user_info()
 
-        # Step 2: Load configuration
-        print_step(2, 7, "Loading Configuration")
-        config_loader = ConfigLoader(self.config_path)
-        self.config = config_loader.load()
-        if not self.config:
-            return False
+        # Collect project info
+        project_name = info_collector.collect_project_info()
+        project_description = f"ACOLYTE-powered {project_name} project"
 
-        # Validate hardware
-        if not config_loader.validate_hardware():
-            return False
+        # Detect and confirm stack
+        detected_stack = info_collector.detect_and_confirm_stack()
 
-        # Step 3: Verify Docker setup
-        print_step(3, 7, "Docker Infrastructure")
-        docker_manager = DockerManager(self.config, self.project_dir)
-        if not docker_manager.verify_compose_file():
-            return False
+        # Advanced configuration
+        advanced = AdvancedConfiguration(hardware)
 
-        # Step 4: Start Docker services
-        print_step(4, 7, "Starting Docker Services")
-        if not await docker_manager.start_services():
-            return False
+        # Model selection
+        model_config = advanced.configure_model()
 
-        # Step 5: Setup Ollama model
-        print_step(5, 7, "Setting Up Ollama Model")
-        ollama_manager = OllamaManager(self.config["model"]["name"], self.project_dir)
-        if not ollama_manager.verify_modelfile():
-            return False
+        # Port configuration
+        ports = advanced.configure_ports()
 
-        if not await ollama_manager.pull_model():
-            return False
+        # Resource limits
+        docker_config = advanced.configure_resources(hardware)
 
-        if not await ollama_manager.create_acolyte_model():
-            return False
+        # Language configuration
+        lang_config = LanguageConfiguration(self.project_path)
+        languages = lang_config.detect_languages()
+        linting_config = lang_config.configure_linters(languages)
+        custom_ignore = lang_config.configure_ignore_patterns()
 
-        # Step 6: Initialize database
-        print_step(6, 7, "Initializing Database")
-        # Database is auto-initialized by the backend on first start
-        print_success("Database initialized automatically")
+        # Detect code style
+        code_style = self._detect_code_style()
 
-        # Step 7: Index project
-        print_step(7, 7, "Indexing Project")
-        indexer = ProjectIndexer(self.project_path, self.config)
-        if not await indexer.index_project():
-            return False
+        # Build complete configuration
+        return get_complete_config(
+            project_id=self.project_id,
+            project_name=project_name,
+            project_path=str(self.project_path),
+            project_user=user_name,
+            project_description=project_description,
+            ports=ports,
+            hardware=hardware,
+            model=model_config,
+            linting=linting_config,
+            ignore_custom=custom_ignore,
+            docker=docker_config,
+            detected_stack=detected_stack,
+            code_style=code_style,
+        )
 
-        # Final success message with animation
-        print_header("✨ Installation Complete")
-        print_success("ACOLYTE is now ready to use!")
+    def _detect_code_style(self) -> Dict[str, Any]:
+        """Detect code style preferences"""
+        code_style = {}
 
-        # Show usage tips with animation
-        print(f"\n{Colors.CYAN}{Colors.BOLD}Quick Start Guide:{Colors.ENDC}")
-        tips = [
-            "Check status: acolyte status",
-            "Stop services: acolyte stop",
-            "Start services: acolyte start",
-            "View logs: check ~/.acolyte/projects/{id}/data/logs/",
-        ]
+        # Python
+        if (self.project_path / "pyproject.toml").exists():
+            code_style["python"] = {
+                "formatter": "black",
+                "linter": "ruff",
+                "line_length": 100,
+                "quotes": "double",
+                "docstring_style": "google",
+                "type_checking": "strict",
+            }
 
-        for tip in tips:
-            animate_text(f"{Colors.GREEN}▶ {tip}{Colors.ENDC}", duration=0.3)
+        # JavaScript/TypeScript
+        if (self.project_path / ".eslintrc.json").exists() or (
+            self.project_path / ".eslintrc.js"
+        ).exists():
+            code_style["javascript"] = {
+                "formatter": "prettier",
+                "linter": "eslint",
+                "semicolons": False,
+                "quotes": "single",
+                "indent": 2,
+                "typescript": (self.project_path / "tsconfig.json").exists(),
+            }
 
-        # Show service URLs
-        ports = self.config.get("ports", {})
-        print(f"\n{Colors.CYAN}{Colors.BOLD}Service URLs:{Colors.ENDC}")
-        print(f"  Weaviate: http://localhost:{ports.get('weaviate', 8080)}")
-        print(f"  Ollama: http://localhost:{ports.get('ollama', 11434)}")
-        print(f"  Backend API: http://localhost:{ports.get('backend', 8000)}")
-        print(f"  API Docs: http://localhost:{ports.get('backend', 8000)}/api/docs")
+        # General
+        code_style["general"] = {
+            "indent_style": "spaces",
+            "trim_trailing_whitespace": True,
+            "insert_final_newline": True,
+            "charset": "utf-8",
+        }
 
-        return True
+        return code_style
+
+    def _show_configuration_summary(self, config: Dict[str, Any]):
+        """Show configuration summary"""
+        print_header("📋 Configuration Summary")
+
+        print(f"\n{Colors.BOLD}Project:{Colors.ENDC}")
+        print(f"  Name: {config['project']['name']}")
+        print(f"  User: {config['project']['user']}")
+        print(f"  Path: {self.project_path}")
+
+        print(f"\n{Colors.BOLD}Model:{Colors.ENDC}")
+        print(f"  Name: {config['model']['name']}")
+        print(f"  Context: {config['model']['context_size']} tokens")
+
+        print(f"\n{Colors.BOLD}Services:{Colors.ENDC}")
+        print(f"  Weaviate: localhost:{config['ports']['weaviate']}")
+        print(f"  Ollama: localhost:{config['ports']['ollama']}")
+        print(f"  Backend: localhost:{config['ports']['backend']}")
+
+        print(f"\n{Colors.BOLD}Resources:{Colors.ENDC}")
+        print(f"  Docker memory: {config['docker']['memory_limit']}")
+        print(f"  Docker CPUs: {config['docker']['cpu_limit']}")
+
+        if config.get('linting'):
+            print(f"\n{Colors.BOLD}Linters:{Colors.ENDC}")
+            for lang, tools in config['linting'].items():
+                print(f"  {lang}: {tools['linter']} + {tools['formatter']}")
+
+    def _save_configuration(self, config: Dict[str, Any]):
+        """Save configuration to file"""
+        try:
+            # Ensure directory exists
+            self.project_global_dir.mkdir(parents=True, exist_ok=True)
+
+            # Backup if exists
+            if self.config_path.exists():
+                backup_path = self.config_path.with_suffix('.acolyte.backup')
+                shutil.copy2(self.config_path, backup_path)
+                print_info(f"Backed up existing config to: {backup_path}")
+
+            # Save configuration
+            with open(self.config_path, 'w') as f:
+                yaml.dump(config, f, default_flow_style=False, sort_keys=False)
+
+            print_success(f"Configuration saved to: {self.config_path}")
+
+        except IOError as e:
+            print_error(f"Failed to save configuration: {e}")
+            logger.error("Failed to save configuration", path=str(self.config_path), error=str(e))
+            raise ConfigurationError(f"Failed to save configuration to {self.config_path}", cause=e)
+
+    def _generate_docker_files(self, config: Dict[str, Any]):
+        """Generate Docker infrastructure files"""
+        try:
+            generator = DockerGenerator(config, self.project_global_dir)
+
+            # Generate docker-compose.yml
+            compose = generator.generate_compose()
+            if generator.save_compose(compose):
+                print_success("Docker Compose file generated")
+
+            # Generate Dockerfile
+            if generator.generate_global_dockerfile():
+                print_success("Dockerfile generated")
+
+        except IOError as e:
+            # Log IO errors with context
+            logger.error("Failed to generate Docker files (IOError)", error=str(e))
+            print_error(f"Failed to generate Docker files: {e}")
+            raise ConfigurationError("Failed to generate Docker infrastructure files", cause=e)
+        except Exception as e:
+            # Log any other unexpected error with context
+            logger.error("Failed to generate Docker files (unexpected error)", error=str(e))
+            print_error(f"Failed to generate Docker files: {e}")
+            raise ConfigurationError(
+                "Failed to generate Docker infrastructure files due to unexpected error", cause=e
+            )
+
+    def _generate_modelfile(self, config: Dict[str, Any]):
+        """Generate Ollama Modelfile"""
+        try:
+            # Load system prompt from Modelfile.acolyte
+            modelfile_template_path = Path(__file__).parent / "common" / "Modelfile.acolyte"
+            if not modelfile_template_path.exists():
+                raise FileNotFoundError(
+                    f"System prompt template not found: {modelfile_template_path}"
+                )
+
+            # Read the system prompt template
+            system_prompt_template = modelfile_template_path.read_text(encoding='utf-8')
+
+            # Replace variables in the template
+            system_prompt = system_prompt_template.replace(
+                "{project_name}", config['project']['name']
+            ).replace("{project_user}", config['project']['user'])
+
+            # Build the complete Modelfile
+            modelfile_content = f"""FROM {config['model']['name']}
+
+# System prompt for ACOLYTE
+SYSTEM \"\"\"
+{system_prompt}
+\"\"\"
+
+# Model parameters
+PARAMETER temperature 0.1
+PARAMETER top_p 0.9
+PARAMETER top_k 40
+PARAMETER num_ctx {config['model']['context_size']}
+PARAMETER repeat_penalty 1.1
+PARAMETER seed 42
+"""
+
+            modelfile_path = self.project_global_dir / "infra" / "Modelfile"
+            modelfile_path.parent.mkdir(exist_ok=True)
+            modelfile_path.write_text(modelfile_content)
+
+            print_success("Modelfile created")
+
+        except IOError as e:
+            print_error(f"Failed to create Modelfile: {e}")
+            logger.error("Failed to create Modelfile", path=str(modelfile_path), error=str(e))
+            raise ConfigurationError(f"Failed to create Modelfile at {modelfile_path}", cause=e)
+
+    def _initialize_database(self, config: Dict[str, Any]):
+        """Initialize SQLite database structure."""
+        try:
+            # SQLite database path
+            db_path = self.project_global_dir / "data" / "acolyte.db"
+            db_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            print_info("Creating SQLite database structure...")
+            show_spinner("Initializing database tables", 1.5)
+            
+            # The database will be created automatically when first accessed
+            # DatabaseManager in core/database.py handles schema initialization
+            # Just ensure the directory exists
+            
+            if db_path.exists():
+                print_info(f"Database already exists at: {db_path}")
+            else:
+                print_info(f"Database will be created at: {db_path}")
+            
+            # Create other data directories
+            dreams_dir = self.project_global_dir / "data" / "dreams"
+            dreams_dir.mkdir(parents=True, exist_ok=True)
+            
+            embeddings_dir = self.project_global_dir / "data" / "embeddings_cache"
+            embeddings_dir.mkdir(parents=True, exist_ok=True)
+            
+            print_success("Database structure initialized")
+            print_info("SQLite tables will be created on first use")
+            print_info("Weaviate collections will be initialized when services start")
+            
+            logger.info("Database initialization complete", db_path=str(db_path))
+            
+        except Exception as e:
+            print_error(f"Failed to initialize database: {e}")
+            logger.error("Database initialization failed", error=str(e))
+            raise ConfigurationError("Failed to initialize database structure", cause=e)
+
+    def _show_completion(self):
+        """Show installation completion message"""
+        print_header("✨ Configuration Complete!")
+
+        print(
+            f"\n{Colors.GREEN}{Colors.BOLD}ACOLYTE has been configured successfully!{Colors.ENDC}"
+        )
+
+        print(f"\n{Colors.BOLD}Next Steps:{Colors.ENDC}")
+        print(f"\n1. {Colors.GREEN}Start ACOLYTE services:{Colors.ENDC}")
+        print(f"   {Colors.CYAN}acolyte start{Colors.ENDC}")
+        print(f"   {Colors.YELLOW}This will start Docker containers and initialize Weaviate{Colors.ENDC}")
+
+        print(f"\n2. {Colors.GREEN}Wait for services to be ready:{Colors.ENDC}")
+        print(f"   {Colors.CYAN}acolyte status{Colors.ENDC}")
+        print(f"   {Colors.YELLOW}All services should show 'healthy'{Colors.ENDC}")
+
+        print(f"\n3. {Colors.GREEN}Index your project (IMPORTANT):{Colors.ENDC}")
+        print(f"   {Colors.CYAN}acolyte index{Colors.ENDC}")
+        print(f"   {Colors.YELLOW}This may take several minutes depending on project size{Colors.ENDC}")
+        print(f"   {Colors.YELLOW}ACOLYTE needs to analyze all your code files first{Colors.ENDC}")
+
+        print(f"\n4. {Colors.GREEN}Start coding with ACOLYTE:{Colors.ENDC}")
+        print(f"   {Colors.YELLOW}Use the API at http://localhost:<backend_port>{Colors.ENDC}")
+        print(f"   {Colors.YELLOW}Or integrate with your IDE{Colors.ENDC}")
+
+        print(f"\n{Colors.BOLD}Important Notes:{Colors.ENDC}")
+        print(f"  • {Colors.YELLOW}Docker must be running before 'acolyte start'{Colors.ENDC}")
+        print(f"  • {Colors.YELLOW}First indexing is crucial - ACOLYTE won't work without it{Colors.ENDC}")
+        print(f"  • {Colors.YELLOW}Git hooks are installed - commits will auto-update the index{Colors.ENDC}")
+        
+        print(f"\n{Colors.BOLD}Ready to code with ACOLYTE!{Colors.ENDC} 🚀")
 
 
 async def main():
     """Main entry point"""
     try:
-        installer = AcolyteInstaller()
+        project_path = Path.cwd()
+        installer = InstallationOrchestrator(project_path)
         await installer.install()
+
+    except FileNotFoundError as e:
+        print_error(str(e))
+        print_info("Run 'acolyte init' first to initialize the project")
+        sys.exit(1)
     except KeyboardInterrupt:
-        print_warning("\nInstallation interrupted")
-        print_info("You can resume installation by running 'acolyte install' again")
+        print_warning("\nInstallation cancelled by user")
+        sys.exit(0)
+    except AcolyteError as e:
+        print_error(f"Installation failed: {e.message}")
+        if e.suggestions:
+            print_info("Suggestions:")
+            for suggestion in e.suggestions:
+                print_info(f"  • {suggestion}")
+        logger.error("Installation failed", error_id=e.id, error=str(e))
+        sys.exit(1)
     except Exception as e:
         print_error(f"Installation failed: {e}")
-        logger.error(f"Installation error: {e}", exc_info=True)
-        print_info("Check logs for details: " + str(log_file))
+        logger.error("Fatal error during installation", error=str(e), include_trace=True)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

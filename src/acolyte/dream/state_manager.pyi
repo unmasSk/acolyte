@@ -10,12 +10,12 @@ from acolyte.core.database import DatabaseManager
 from acolyte.core.secure_config import Settings
 
 class DreamState(str, Enum):
-    MONITORING: str
-    DROWSY: str
-    DREAMING: str
-    REM: str
-    DEEP_SLEEP: str
-    WAKING: str
+    MONITORING = "MONITORING"
+    DROWSY = "DROWSY"
+    DREAMING = "DREAMING"
+    REM = "REM"
+    DEEP_SLEEP = "DEEP_SLEEP"
+    WAKING = "WAKING"
 
 class DreamStateManager:
     VALID_TRANSITIONS: Dict[DreamState, List[DreamState]]

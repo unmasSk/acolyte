@@ -7,7 +7,7 @@ import json
 from collections import OrderedDict
 from typing import Union, AsyncIterator, List, Type, Optional, Dict, Any
 from pydantic import BaseModel, ValidationError
-from acolyte.core.exceptions import ExternalServiceError
+from acolyte.core.exceptions import ExternalServiceError, ConfigurationError
 from acolyte.core.logging import logger
 from acolyte.core.utils.retry import retry_async
 
@@ -23,10 +23,28 @@ class OllamaClient:
     4. Streaming eficiente
     """
 
-    def __init__(self, base_url: str = "http://localhost:11434", cache_size: int = 1000) -> None:
+    def __init__(self, base_url: Optional[str] = None, cache_size: int = 1000) -> None:
+        """Initialize Ollama client.
+
+        Args:
+            base_url: Ollama server URL (if None, reads from config)
+            cache_size: Maximum number of cached responses
+        """
         logger.info("OllamaClient initializing...")
         try:
-            self.base_url = base_url
+            if base_url is None:
+                # Read from configuration
+                from acolyte.core import Settings
+
+                config = Settings()
+                port = config.get("ports.ollama")
+                if not port:
+                    raise ConfigurationError(
+                        "Ollama port not configured. Please check your .acolyte file."
+                    )
+                self.base_url = f"http://localhost:{port}"
+            else:
+                self.base_url = base_url
             self.model = "acolyte:latest"  # ALWAYS this model
             self.session = aiohttp.ClientSession()
             # JUSTIFICATION OrderedDict vs functools.lru_cache:
@@ -38,6 +56,7 @@ class OllamaClient:
             # VERDICT: OrderedDict is the CORRECT choice here
             self.cache: "OrderedDict[str, str]" = OrderedDict()  # Real LRU cache with OrderedDict
             self.cache_size = cache_size
+            logger.info(f"Ollama client initialized with URL: {self.base_url}")
             logger.info("OllamaClient ready", base_url=self.base_url, model=self.model)
         except Exception as e:
             logger.error("OllamaClient initialization failed", error=str(e))

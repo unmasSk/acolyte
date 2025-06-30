@@ -37,8 +37,22 @@ if errorlevel 1 (
 )
 
 REM Check Python version
-for /f "tokens=2" %%i in ('python --version 2^>^&1') do set PYTHON_VERSION=%%i
+REM Check Python version
+python -c "import sys; print('.'.join(map(str, sys.version_info[:2])))" > temp_version.txt 2>nul
+if errorlevel 1 (
+    echo %RED%✗%NC% Failed to check Python version
+    exit /b 1
+)
+set /p PYTHON_VERSION=<temp_version.txt
+del temp_version.txt
 echo Found Python %PYTHON_VERSION%
+
+REM Verify minimum version (simplified check)
+python -c "import sys; exit(0 if sys.version_info >= (3, 11) else 1)" >nul 2>&1
+if errorlevel 1 (
+    echo %RED%✗%NC% Python 3.11+ required ^(found %PYTHON_VERSION%^)
+    exit /b 1
+)
 
 REM Check Git
 git --version >nul 2>&1
@@ -125,14 +139,38 @@ REM Install PyYAML globally for git hooks
 echo Installing PyYAML for git hooks...
 python -m pip install --user pyyaml requests
 
-REM Check if Poetry is installed
-poetry --version >nul 2>&1
-if errorlevel 1 (
-    echo Installing Poetry...
-    curl -sSL https://install.python-poetry.org | python -
-    REM Add Poetry to PATH for current session
-    set PATH=%APPDATA%\Python\Scripts;%PATH%
+REM Secure Poetry installation with checksum verification
+SET "POETRY_INSTALLER_URL=https://install.python-poetry.org"
+SET "POETRY_INSTALLER_FILE=%TEMP%\poetry-installer.py"
+SET "POETRY_INSTALLER_HASH_URL=https://install.python-poetry.org/sha256sum.txt"
+SET "POETRY_INSTALLER_HASH_FILE=%TEMP%\poetry-installer.sha256"
+
+REM Download installer script
+powershell -Command "Invoke-WebRequest -Uri %POETRY_INSTALLER_URL% -OutFile '%POETRY_INSTALLER_FILE%'"
+REM Download official hash
+powershell -Command "Invoke-WebRequest -Uri %POETRY_INSTALLER_HASH_URL% -OutFile '%POETRY_INSTALLER_HASH_FILE%'"
+
+REM Extract expected hash for the installer file
+FOR /F "tokens=1,2" %%A IN ('findstr /I "poetry-installer.py" "%POETRY_INSTALLER_HASH_FILE%"') DO SET "EXPECTED_HASH=%%A"
+
+REM Compute actual hash
+FOR /F %%H IN ('powershell -Command "Get-FileHash -Algorithm SHA256 '%POETRY_INSTALLER_FILE%' | Select-Object -ExpandProperty Hash"') DO SET "ACTUAL_HASH=%%H"
+
+REM Compare hashes
+IF /I NOT "%EXPECTED_HASH%"=="%ACTUAL_HASH%" (
+    echo Error: Poetry installer checksum verification failed.
+    del "%POETRY_INSTALLER_FILE%"
+    exit /b 1
 )
+
+REM Run the installer
+py "%POETRY_INSTALLER_FILE%"
+
+REM Add Poetry to PATH (user scope)
+setx PATH "%APPDATA%\Python\Scripts;%PATH%"
+
+REM Verify Poetry installation
+poetry --version
 
 REM Install project dependencies
 poetry install --only main
@@ -143,18 +181,18 @@ if errorlevel 1 (
 
 echo %GREEN%✓%NC% Dependencies installed
 
-REM Create batch file wrapper
-echo %BLUE%[%TIME%]%NC% Creating executable...
+REM Install executable
+echo %BLUE%[%TIME%]%NC% Installing executable...
 
-REM Create acolyte.bat
-echo @echo off > "%INSTALL_DIR%\bin\acolyte.bat"
-echo setlocal >> "%INSTALL_DIR%\bin\acolyte.bat"
-echo set ACOLYTE_HOME=%%USERPROFILE%%\.acolyte >> "%INSTALL_DIR%\bin\acolyte.bat"
-echo set PYTHONPATH=%%ACOLYTE_HOME%%\src;%%PYTHONPATH%% >> "%INSTALL_DIR%\bin\acolyte.bat"
-echo if defined ACOLYTE_DEV set ACOLYTE_HOME=%%ACOLYTE_DEV%% >> "%INSTALL_DIR%\bin\acolyte.bat"
-echo python "%%ACOLYTE_HOME%%\src\acolyte\cli.py" %%* >> "%INSTALL_DIR%\bin\acolyte.bat"
+REM Verify the executable exists
+if not exist "%INSTALL_DIR%\bin\acolyte.bat" (
+    echo %RED%✗%NC% Executable not found in %INSTALL_DIR%\bin\acolyte.bat
+    echo Installation may be corrupted
+    exit /b 1
+)
 
-echo %GREEN%✓%NC% Executable created
+REM The executable is already in place from the copy operation
+echo %GREEN%✓%NC% Executable installed
 
 REM Update PATH
 echo %BLUE%[%TIME%]%NC% Updating PATH...

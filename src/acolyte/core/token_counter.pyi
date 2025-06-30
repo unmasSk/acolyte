@@ -13,10 +13,10 @@ from dataclasses import dataclass
 class TruncateStrategy(Enum):
     """Text truncation strategies."""
 
-    END: str
-    START: str
-    MIDDLE: str
-    SMART: str
+    END = "end"
+    START = "start"
+    MIDDLE = "middle"
+    SMART = "smart"
 
 @dataclass
 class TokenCount:

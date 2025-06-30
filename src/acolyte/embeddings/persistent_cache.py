@@ -44,7 +44,7 @@ class SmartPersistentCache(ContextAwareCache):
             max_size: Maximum number of entries
             ttl_seconds: TTL in seconds
             save_interval: Save interval in seconds (default: 5 min)
-            cache_dir: Directory for cache (default: data/embeddings_cache)
+            cache_dir: Directory for cache (default: project-aware location)
         """
         super().__init__(max_size, ttl_seconds)
 
@@ -55,7 +55,7 @@ class SmartPersistentCache(ContextAwareCache):
 
         # Configure cache directory
         if cache_dir is None:
-            self._cache_dir = Path("data/embeddings_cache")
+            self._cache_dir = self._get_cache_path()
         else:
             self._cache_dir = cache_dir
         self._cache_dir.mkdir(parents=True, exist_ok=True)
@@ -75,6 +75,35 @@ class SmartPersistentCache(ContextAwareCache):
             save_interval=save_interval,
             cache_file=str(self._cache_file),
         )
+
+    def _get_cache_path(self) -> Path:
+        """Get the correct path for embeddings cache.
+        
+        CLEAN PROJECT ARCHITECTURE:
+        - If .acolyte.project exists: use ~/.acolyte/projects/{id}/data/embeddings_cache/
+        - Otherwise (during development): use ./data/embeddings_cache/
+        """
+        # Check if we're in a configured project
+        project_file = Path.cwd() / ".acolyte.project"
+        
+        if project_file.exists():
+            try:
+                import json
+                with open(project_file) as f:
+                    project_data = json.load(f)
+                    project_id = project_data.get("project_id")
+                    
+                if project_id:
+                    # Use global project directory
+                    global_cache_dir = (
+                        Path.home() / ".acolyte" / "projects" / project_id / "data" / "embeddings_cache"
+                    )
+                    return global_cache_dir
+            except Exception as e:
+                logger.warning("Failed to read project file, using local data", error=str(e))
+        
+        # Fallback for development
+        return Path("data") / "embeddings_cache"
 
     def _start_periodic_save(self):
         """Starts periodic background saving."""

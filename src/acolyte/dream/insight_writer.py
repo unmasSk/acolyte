@@ -40,12 +40,40 @@ class InsightWriter:
         self.dream_folder = self.config.get("dream.dream_folder_name", "dreams")
         self.keep_days = self.config.get("dream.keep_sessions_days", 90)
 
-        # Ensure dream folder exists in data directory
-        data_dir = Path("data")
-        self.dream_path = data_dir / self.dream_folder
+        # Ensure dream folder exists in correct location
+        self.dream_path = self._get_dream_path()
         self.dream_path.mkdir(parents=True, exist_ok=True)
 
         logger.info("Dream insight writer initialized", module="dream")
+
+    def _get_dream_path(self) -> Path:
+        """Get the correct path for dream insights.
+        
+        CLEAN PROJECT ARCHITECTURE:
+        - If .acolyte.project exists: use ~/.acolyte/projects/{id}/data/dreams/
+        - Otherwise (during development): use ./data/dreams/
+        """
+        # Check if we're in a configured project
+        project_file = Path.cwd() / ".acolyte.project"
+        
+        if project_file.exists():
+            try:
+                import json
+                with open(project_file) as f:
+                    project_data = json.load(f)
+                    project_id = project_data.get("project_id")
+                    
+                if project_id:
+                    # Use global project directory
+                    global_dream_dir = (
+                        Path.home() / ".acolyte" / "projects" / project_id / "data" / self.dream_folder
+                    )
+                    return global_dream_dir
+            except Exception as e:
+                logger.warning("Failed to read project file, using local data", error=str(e))
+        
+        # Fallback for development
+        return Path("data") / self.dream_folder
 
     def _sanitize_filename(self, name: str) -> str:
         """

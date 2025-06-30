@@ -15,8 +15,8 @@ from .analyzer import DreamAnalyzer
 from .insight_writer import InsightWriter
 
 class DreamTrigger(str, Enum):
-    USER_REQUEST: str
-    FATIGUE_SUGGESTION: str
+    USER_REQUEST = "USER_REQUEST"
+    FATIGUE_SUGGESTION = "FATIGUE_SUGGESTION"
 
 class DreamOrchestrator:
     config: Settings

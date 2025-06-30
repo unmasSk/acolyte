@@ -153,7 +153,7 @@ class KotlinChunker(BaseChunker, SecurityAnalysisMixin, PatternDetectionMixin):
 
     def _extract_function_metadata(self, func_node) -> Dict[str, Any]:
         """Extract Kotlin-specific function metadata."""
-        metadata = {
+        metadata: Dict[str, Any] = {
             # Basic info
             'modifiers': [],
             'visibility': 'public',  # Default in Kotlin
@@ -189,23 +189,33 @@ class KotlinChunker(BaseChunker, SecurityAnalysisMixin, PatternDetectionMixin):
         if 'suspend fun' in first_line or first_line.startswith('suspend '):
             logger.info("[UNTESTED PATH] kotlin suspend function")
             metadata['is_suspend'] = True
-            metadata['modifiers'].append('suspend')
+            modifiers = metadata['modifiers']
+            assert isinstance(modifiers, list)
+            modifiers.append('suspend')
         if 'operator fun' in first_line or ' operator ' in first_line:
             logger.info("[UNTESTED PATH] kotlin operator function")
             metadata['is_operator'] = True
-            metadata['modifiers'].append('operator')
+            modifiers = metadata['modifiers']
+            assert isinstance(modifiers, list)
+            modifiers.append('operator')
         if 'inline fun' in first_line or first_line.startswith('inline '):
             logger.info("[UNTESTED PATH] kotlin inline function")
             metadata['is_inline'] = True
-            metadata['modifiers'].append('inline')
+            modifiers = metadata['modifiers']
+            assert isinstance(modifiers, list)
+            modifiers.append('inline')
         if 'infix fun' in first_line or ' infix ' in first_line:
             logger.info("[UNTESTED PATH] kotlin infix function")
             metadata['is_infix'] = True
-            metadata['modifiers'].append('infix')
+            modifiers = metadata['modifiers']
+            assert isinstance(modifiers, list)
+            modifiers.append('infix')
         if 'abstract fun' in first_line or first_line.startswith('abstract '):
             logger.info("[UNTESTED PATH] kotlin abstract function")
             metadata['is_abstract'] = True
-            metadata['modifiers'].append('abstract')
+            modifiers = metadata['modifiers']
+            assert isinstance(modifiers, list)
+            modifiers.append('abstract')
 
         # Check for extension function by looking at the function name structure
         # Extension functions have the receiver type as part of the name
@@ -217,25 +227,36 @@ class KotlinChunker(BaseChunker, SecurityAnalysisMixin, PatternDetectionMixin):
             if child.type == 'suspend':
                 logger.info("[UNTESTED PATH] kotlin suspend modifier node")
                 metadata['is_suspend'] = True
-                metadata['modifiers'].append('suspend')
+                modifiers = metadata['modifiers']
+                assert isinstance(modifiers, list)
+                modifiers.append('suspend')
             elif child.type == 'inline':
                 logger.info("[UNTESTED PATH] kotlin inline modifier node")
                 metadata['is_inline'] = True
-                metadata['modifiers'].append('inline')
+                modifiers = metadata['modifiers']
+                assert isinstance(modifiers, list)
+                modifiers.append('inline')
             elif child.type == 'operator':
                 logger.info("[UNTESTED PATH] kotlin operator modifier node")
                 metadata['is_operator'] = True
-                metadata['modifiers'].append('operator')
+                modifiers = metadata['modifiers']
+                assert isinstance(modifiers, list)
+                modifiers.append('operator')
             elif child.type == 'infix':
                 logger.info("[UNTESTED PATH] kotlin infix modifier node")
                 metadata['is_infix'] = True
-                metadata['modifiers'].append('infix')
+                modifiers = metadata['modifiers']
+                assert isinstance(modifiers, list)
+                modifiers.append('infix')
             elif child.type == 'abstract':
                 logger.info("[UNTESTED PATH] kotlin abstract modifier node")
                 metadata['is_abstract'] = True
-                metadata['modifiers'].append('abstract')
+                modifiers = metadata['modifiers']
+                assert isinstance(modifiers, list)
+                modifiers.append('abstract')
             elif child.type == 'modifiers':
                 modifiers = metadata['modifiers']
+                assert isinstance(modifiers, list)
                 extracted = self._extract_modifiers(child)
                 if isinstance(extracted, list):
                     modifiers.extend(extracted)
@@ -304,7 +325,7 @@ class KotlinChunker(BaseChunker, SecurityAnalysisMixin, PatternDetectionMixin):
 
     def _extract_class_metadata(self, class_node) -> Dict[str, Any]:
         """Extract Kotlin-specific class metadata."""
-        metadata = {
+        metadata: Dict[str, Any] = {
             'modifiers': [],
             'visibility': 'public',
             'is_data_class': False,
@@ -330,19 +351,29 @@ class KotlinChunker(BaseChunker, SecurityAnalysisMixin, PatternDetectionMixin):
         if first_line.startswith('data class'):
             logger.info("[UNTESTED PATH] kotlin data class")
             metadata['is_data_class'] = True
-            metadata['modifiers'].append('data')
+            modifiers = metadata['modifiers']
+            assert isinstance(modifiers, list)
+            modifiers.append('data')
         if first_line.startswith('sealed class'):
             metadata['is_sealed_class'] = True
-            metadata['modifiers'].append('sealed')
+            modifiers = metadata['modifiers']
+            assert isinstance(modifiers, list)
+            modifiers.append('sealed')
         if first_line.startswith('enum class'):
             metadata['is_enum_class'] = True
-            metadata['modifiers'].append('enum')
+            modifiers = metadata['modifiers']
+            assert isinstance(modifiers, list)
+            modifiers.append('enum')
         if 'inner class' in first_line:
             metadata['is_inner'] = True
-            metadata['modifiers'].append('inner')
+            modifiers = metadata['modifiers']
+            assert isinstance(modifiers, list)
+            modifiers.append('inner')
         if 'companion object' in class_text[:100]:  # Check in first 100 chars
             metadata['is_companion_object'] = True
-            metadata['modifiers'].append('companion')
+            modifiers = metadata['modifiers']
+            assert isinstance(modifiers, list)
+            modifiers.append('companion')
 
         # In Kotlin, modifiers like 'data', 'sealed' are direct children
         for child in class_node.children:
@@ -350,22 +381,33 @@ class KotlinChunker(BaseChunker, SecurityAnalysisMixin, PatternDetectionMixin):
             if child.type == 'data':
                 logger.info("[UNTESTED PATH] kotlin data modifier node")
                 metadata['is_data_class'] = True
-                metadata['modifiers'].append('data')
+                modifiers = metadata['modifiers']
+                assert isinstance(modifiers, list)
+                modifiers.append('data')
             elif child.type == 'sealed':
                 logger.info("[UNTESTED PATH] kotlin sealed modifier node")
                 metadata['is_sealed_class'] = True
-                metadata['modifiers'].append('sealed')
+                modifiers = metadata['modifiers']
+                assert isinstance(modifiers, list)
+                modifiers.append('sealed')
             elif child.type == 'enum':
                 metadata['is_enum_class'] = True
-                metadata['modifiers'].append('enum')
+                modifiers = metadata['modifiers']
+                assert isinstance(modifiers, list)
+                modifiers.append('enum')
             elif child.type == 'inner':
                 metadata['is_inner'] = True
-                metadata['modifiers'].append('inner')
+                modifiers = metadata['modifiers']
+                assert isinstance(modifiers, list)
+                modifiers.append('inner')
             elif child.type == 'companion':
                 metadata['is_companion_object'] = True
-                metadata['modifiers'].append('companion')
+                modifiers = metadata['modifiers']
+                assert isinstance(modifiers, list)
+                modifiers.append('companion')
             elif child.type == 'modifiers':
                 modifiers = metadata['modifiers']
+                assert isinstance(modifiers, list)
                 extracted = self._extract_modifiers(child)
                 if isinstance(extracted, list):
                     modifiers.extend(extracted)
@@ -402,7 +444,9 @@ class KotlinChunker(BaseChunker, SecurityAnalysisMixin, PatternDetectionMixin):
                                             )
                                             break
                                     if prop_name and prop_name not in metadata['properties']:
-                                        metadata['properties'].append(prop_name)
+                                        properties = metadata['properties']
+                                        assert isinstance(properties, list)
+                                        properties.append(prop_name)
 
             # Extract supertype list
             elif child.type == 'delegation_specifiers':
@@ -415,15 +459,21 @@ class KotlinChunker(BaseChunker, SecurityAnalysisMixin, PatternDetectionMixin):
                     if member.type == 'property_declaration':
                         prop_name = self._extract_node_name(member)
                         if prop_name:
-                            metadata['properties'].append(prop_name)
+                            properties = metadata['properties']
+                            assert isinstance(properties, list)
+                            properties.append(prop_name)
                     elif member.type == 'function_declaration':
                         method_name = self._extract_node_name(member)
                         if method_name:
-                            metadata['methods'].append(method_name)
+                            methods = metadata['methods']
+                            assert isinstance(methods, list)
+                            methods.append(method_name)
                     elif member.type in ['class_declaration', 'object_declaration']:
                         nested_name = self._extract_node_name(member)
                         if nested_name:
-                            metadata['nested_classes'].append(nested_name)
+                            nested_classes = metadata['nested_classes']
+                            assert isinstance(nested_classes, list)
+                            nested_classes.append(nested_name)
 
         # Check for KDoc
         metadata['has_docstring'] = self._has_kdoc(class_node)
@@ -432,7 +482,7 @@ class KotlinChunker(BaseChunker, SecurityAnalysisMixin, PatternDetectionMixin):
 
     def _extract_property_metadata(self, prop_node) -> Dict[str, Any]:
         """Extract Kotlin property metadata."""
-        metadata = {
+        metadata: Dict[str, Any] = {
             'modifiers': [],
             'visibility': 'public',
             'is_var': True,  # vs val
@@ -655,8 +705,13 @@ class KotlinChunker(BaseChunker, SecurityAnalysisMixin, PatternDetectionMixin):
 
     def _get_security_patterns(self) -> List[Callable[[Any, str], Optional[Dict[str, Any]]]]:
         """Override to add Kotlin-specific security checks."""
+        from typing import cast
+
         base_patterns = super()._get_security_patterns()
-        return base_patterns + [self._check_unsafe_null_assertion]
+        return cast(
+            List[Callable[[Any, str], Optional[Dict[str, Any]]]],
+            base_patterns + [self._check_unsafe_null_assertion],
+        )
 
     def _check_unsafe_null_assertion(self, node, text: str) -> Optional[Dict[str, Any]]:
         """Check for unsafe !! null assertions."""

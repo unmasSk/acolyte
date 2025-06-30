@@ -93,11 +93,17 @@ class PortManager:
         result = {}
 
         # Check Weaviate
+        # Check Weaviate
         pref_weaviate = preferred_ports.get("weaviate", cls.WEAVIATE_BASE)
         if cls.is_port_available(pref_weaviate):
             result["weaviate"] = pref_weaviate
         else:
-            result["weaviate"] = cls.find_next_available(pref_weaviate) or pref_weaviate
+            next_port = cls.find_next_available(pref_weaviate)
+            if next_port is None:
+                raise RuntimeError(
+                    f"Cannot find available Weaviate port starting from {pref_weaviate}"
+                )
+            result["weaviate"] = next_port
 
         # Check Ollama
         pref_ollama = preferred_ports.get("ollama", cls.OLLAMA_BASE)

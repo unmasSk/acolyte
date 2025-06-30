@@ -6,7 +6,7 @@ Docker and GPU detection utilities for ACOLYTE
 import logging
 import os
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, cast, Any
 
 import yaml
 
@@ -19,7 +19,7 @@ class GPUDetector:
     @staticmethod
     def find_nvidia_libraries() -> Dict[str, List[str]]:
         """Find NVIDIA libraries and devices"""
-        libraries = {"volumes": [], "devices": []}
+        libraries: Dict[str, List[str]] = {"volumes": [], "devices": []}
 
         # Common NVIDIA library paths
         lib_paths = [
@@ -168,7 +168,7 @@ class DockerGenerator:
                     ],
                     "volumes": [
                         f"{acolyte_src}/src:/app/src:ro",  # ACOLYTE source code (read-only)
-                        f"{self.project_dir}/config.yaml:/.acolyte:ro",  # Project config
+                        f"{self.project_dir}/.acolyte:/.acolyte:ro",  # Project config
                         f"{self.project_dir}/data:/data",  # Project data
                         f"{self.user_project_path}:/project:ro",  # User's project (read-only)
                     ],
@@ -198,19 +198,24 @@ class DockerGenerator:
             if gpu_config["type"] == "nvidia":
                 # Auto-detect GPU libraries
                 gpu_libs = GPUDetector.find_nvidia_libraries()
+                gpu_libs = cast(Dict[str, List[str]], gpu_libs)
+                services = cast(Dict[str, Any], compose["services"])
+                ollama_service = cast(Dict[str, Any], services["ollama"])
 
-                if gpu_libs["volumes"]:
-                    compose["services"]["ollama"]["volumes"].extend(gpu_libs["volumes"])
+                if isinstance(gpu_libs, dict) and "volumes" in gpu_libs and gpu_libs["volumes"]:
+                    ollama_service["volumes"].extend(gpu_libs["volumes"])
                     logger.info(f"Added {len(gpu_libs['volumes'])} GPU library volumes")
 
-                if gpu_libs["devices"]:
-                    compose["services"]["ollama"]["devices"] = gpu_libs["devices"]
+                if isinstance(gpu_libs, dict) and "devices" in gpu_libs and gpu_libs["devices"]:
+                    ollama_service["devices"] = gpu_libs["devices"]
                     logger.info(f"Added {len(gpu_libs['devices'])} GPU devices")
 
         # Add network to all services
-        for service in compose["services"].values():
+        services = cast(Dict[str, Any], compose["services"])
+        for service in services.values():
             service["networks"] = ["acolyte-network"]
 
+        compose = cast(Dict[str, Any], compose)
         return compose
 
     def save_compose(self, compose: Dict) -> bool:
@@ -236,8 +241,11 @@ class DockerGenerator:
             logger.info(f"Docker compose file saved: {compose_file}")
             return True
 
-        except Exception as e:
-            logger.error(f"Error saving docker-compose.yml: {e}")
+        except (IOError, OSError) as e:
+            logger.error(f"Error saving docker-compose.yml: {type(e).__name__}: {e}")
+            return False
+        except yaml.YAMLError as e:
+            logger.error(f"Error serializing docker-compose.yml: {e}")
             return False
 
     def generate_global_dockerfile(self) -> bool:
@@ -284,7 +292,8 @@ ENV PYTHONPATH=/app/src
 EXPOSE 8000
 
 # Run the API
-CMD ["python", "-m", "uvicorn", "acolyte.api:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+# Use --reload only in development mode
+CMD ["python", "-m", "uvicorn", "acolyte.api:app", "--host", "0.0.0.0", "--port", "8000"]
 """
 
             dockerfile_path = Path(acolyte_src) / "Dockerfile"

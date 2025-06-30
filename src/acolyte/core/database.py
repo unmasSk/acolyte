@@ -35,66 +35,66 @@ from acolyte.core.logging import logger
 
 def _classify_sqlite_error(sqlite_error: sqlite3.Error) -> DatabaseError:
     """
-    Clasifica errores SQLite específicos y retorna la excepción apropiada.
+    Classify SQLite specific errors and return appropriate exception.
 
-    Tipos de errores SQLite y su manejo:
-    - SQLITE_BUSY (5): BD bloqueada temporalmente → SQLiteBusyError (REINTENTABLE)
-    - SQLITE_CORRUPT (11): BD corrupta → SQLiteCorruptError (NO REINTENTABLE)
-    - SQLITE_CONSTRAINT (19): Violación de restricciones → SQLiteConstraintError (NO REINTENTABLE)
-    - Otros: Error genérico de BD → DatabaseError (REINTENTABLE por defecto)
+    SQLite error types and handling:
+    - SQLITE_BUSY (5): DB temporarily locked → SQLiteBusyError (RETRYABLE)
+    - SQLITE_CORRUPT (11): DB corrupt → SQLiteCorruptError (NOT RETRYABLE)
+    - SQLITE_CONSTRAINT (19): Constraint violation → SQLiteConstraintError (NOT RETRYABLE)
+    - Others: Generic DB error → DatabaseError (RETRYABLE by default)
 
     Args:
-        sqlite_error: Error original de sqlite3
+        sqlite_error: Original sqlite3 error
 
     Returns:
-        Instancia apropiada de DatabaseError según el tipo
+        Appropriate DatabaseError instance based on type
     """
     error_msg = str(sqlite_error)
     error_code = getattr(sqlite_error, 'sqlite_errorcode', None)
 
-    # Mapeo de códigos SQLite a excepciones específicas
+    # Map SQLite codes to specific exceptions
     if error_code == 5 or 'database is locked' in error_msg.lower() or 'busy' in error_msg.lower():
-        # SQLITE_BUSY: BD bloqueada (común en escrituras concurrentes)
+        # SQLITE_BUSY: DB locked (common in concurrent writes)
         exc = SQLiteBusyError(
             f"Database temporarily locked: {error_msg}",
             context={"sqlite_code": error_code, "original_error": error_msg},
         )
-        exc.add_suggestion("Reintentar automáticamente con backoff exponencial")
-        exc.add_suggestion("Verificar que no hay transacciones largas abiertas")
+        exc.add_suggestion("Retry automatically with exponential backoff")
+        exc.add_suggestion("Check for long open transactions")
         return exc
 
     elif error_code == 11 or 'corrupt' in error_msg.lower():
-        # SQLITE_CORRUPT: BD corrupta (requiere intervención manual)
+        # SQLITE_CORRUPT: DB corrupt (requires manual intervention)
         exc = SQLiteCorruptError(
             f"Database corruption detected: {error_msg}",
             context={"sqlite_code": error_code, "original_error": error_msg},
         )
-        exc.add_suggestion("Restaurar desde backup más reciente")
-        exc.add_suggestion("Ejecutar 'PRAGMA integrity_check' para diagnóstico")
-        exc.add_suggestion("Considerar reinicializar la base de datos")
+        exc.add_suggestion("Restore from most recent backup")
+        exc.add_suggestion("Run 'PRAGMA integrity_check' for diagnostics")
+        exc.add_suggestion("Consider reinitializing the database")
         return exc
 
     elif error_code == 19 or any(
         constraint in error_msg.lower()
         for constraint in ['unique', 'foreign key', 'check', 'not null']
     ):
-        # SQLITE_CONSTRAINT: Violación de restricciones (error de lógica)
+        # SQLITE_CONSTRAINT: Constraint violation (logic error)
         exc = SQLiteConstraintError(
             f"Database constraint violation: {error_msg}",
             context={"sqlite_code": error_code, "original_error": error_msg},
         )
-        exc.add_suggestion("Verificar que los datos cumplen las restricciones")
-        exc.add_suggestion("Revisar la lógica de la query o los valores insertados")
+        exc.add_suggestion("Verify that data meets constraints")
+        exc.add_suggestion("Review query logic or inserted values")
         return exc
 
     else:
-        # Error genérico de SQLite (por defecto es reintentable)
+        # Generic SQLite error (retryable by default)
         exc = DatabaseError(
             f"SQLite error: {error_msg}",
             context={"sqlite_code": error_code, "original_error": error_msg},
         )
-        exc.add_suggestion("Verificar configuración de la base de datos")
-        exc.add_suggestion("Revisar permisos de archivo y directorio")
+        exc.add_suggestion("Verify database configuration")
+        exc.add_suggestion("Check file and directory permissions")
         return exc
 
 
@@ -164,8 +164,8 @@ class DatabaseManager:
             self.db_path = db_path or self._get_default_path()
             self._connection = None
             self._lock = (
-                asyncio.Lock()
-            )  # Para serializar accesos y evitar problemas de concurrencia
+            asyncio.Lock()
+            )  # To serialize access and avoid concurrency issues
             self._init_schema()
             logger.info("DatabaseManager ready", db_path=self.db_path)
         except Exception as e:
@@ -173,42 +173,66 @@ class DatabaseManager:
             raise
 
     def _get_default_path(self) -> str:
-        """Obtiene path por defecto para la BD."""
+        """Get default database path.
+        
+        CLEAN PROJECT ARCHITECTURE:
+        - If .acolyte.project exists: use ~/.acolyte/projects/{id}/data/
+        - Otherwise (during development): use ./data/
+        """
+        # Check if we're in a configured project
+        project_file = Path.cwd() / ".acolyte.project"
+        
+        if project_file.exists():
+            try:
+                import json
+                with open(project_file) as f:
+                    project_data = json.load(f)
+                    project_id = project_data.get("project_id")
+                    
+                if project_id:
+                    # Use global project directory
+                    global_data_dir = Path.home() / ".acolyte" / "projects" / project_id / "data"
+                    global_data_dir.mkdir(parents=True, exist_ok=True)
+                    return str(global_data_dir / "acolyte.db")
+            except Exception as e:
+                logger.warning("Failed to read project file, using local data", error=str(e))
+        
+        # Fallback for development
         data_dir = Path("./data")
         data_dir.mkdir(exist_ok=True)
         return str(data_dir / "acolyte.db")
 
     def _get_connection(self) -> sqlite3.Connection:
         """
-        Obtiene conexión a la BD.
+        Get database connection.
 
-        THREAD SAFETY EXPLICADO:
+        THREAD SAFETY EXPLAINED:
         ========================
-        Por qué check_same_thread=False es SEGURO aquí:
+        Why check_same_thread=False is SAFE here:
 
-        1. SERIALIZACION CON LOCK: execute_async() usa asyncio.Lock() para
-           garantizar que solo UN hilo accede a SQLite a la vez
+        1. LOCK SERIALIZATION: execute_async() uses asyncio.Lock() to
+           ensure only ONE thread accesses SQLite at a time
 
-        2. PATRON SINGLETON: Una sola conexión reutilizada, no múltiples
-           conexiones concurrentes
+        2. SINGLETON PATTERN: Single reused connection, not multiple
+           concurrent connections
 
-        3. THREAD POOL CONTROLADO: asyncio.run_in_executor() usa el mismo
-           thread pool, no threads arbitrarios
+        3. CONTROLLED THREAD POOL: asyncio.run_in_executor() uses the same
+           thread pool, not arbitrary threads
 
-        4. MONO-USUARIO: Sin concurrencia real de usuarios
+        4. MONO-USER: No real user concurrency
 
-        IMPORTANTE: El lock en execute_async() es CRÍTICO para esta seguridad.
-        Sin él, check_same_thread=False sería PELIGROSO.
+        IMPORTANT: The lock in execute_async() is CRITICAL for this safety.
+        Without it, check_same_thread=False would be DANGEROUS.
 
-        ALTERNATIVA CONSIDERADA: Una conexión por thread, pero es overkill
-        para un sistema mono-usuario simple.
+        ALTERNATIVE CONSIDERED: One connection per thread, but it's overkill
+        for a simple mono-user system.
         """
         if self._connection is None:
             self._connection = sqlite3.connect(
-                self.db_path, check_same_thread=False  # Seguro por serialización con lock
+                self.db_path, check_same_thread=False  # Safe due to lock serialization
             )
             self._connection.row_factory = sqlite3.Row
-            # Habilitar foreign keys
+            # Enable foreign keys
             self._connection.execute("PRAGMA foreign_keys = ON")
         return self._connection
 
@@ -256,7 +280,7 @@ class DatabaseManager:
             conn.executescript(schema_sql)
             conn.commit()
         except sqlite3.Error as e:
-            # Usar clasificación específica para errores de schema
+            # Use specific classification for schema errors
             raise _classify_sqlite_error(e)
 
     @contextmanager
@@ -279,7 +303,7 @@ class DatabaseManager:
             conn.commit()
         except sqlite3.Error as e:
             conn.rollback()
-            # Usar clasificación específica para errores de transacción
+            # Use specific classification for transaction errors
             raise _classify_sqlite_error(e)
         except Exception as e:
             conn.rollback()
@@ -291,40 +315,40 @@ class DatabaseManager:
         self, query: str, params: tuple[Any, ...] = (), fetch: Optional[FetchType] = None
     ) -> QueryResult:
         """
-        Ejecución asíncrona de queries con serialización para thread-safety.
+        Asynchronous query execution with serialization for thread-safety.
 
-        DECISION DE DISEÑO: Validación MÍNIMA para sistema mono-usuario local
+        DESIGN DECISION: MINIMAL validation for local mono-user system
         ================================================================
-        NO validamos exhaustivamente parámetros porque:
-        1. Sistema mono-usuario local = confianza en el desarrollador
-        2. SQLite ya valida sintaxis SQL y tipos
-        3. Validación excesiva añade latencia innecesaria
-        4. Errores SQL se propagan apropiadamente como DatabaseError
+        We DON'T exhaustively validate parameters because:
+        1. Local mono-user system = trust in the developer
+        2. SQLite already validates SQL syntax and types
+        3. Excessive validation adds unnecessary latency
+        4. SQL errors are properly propagated as DatabaseError
 
-        SÍ validamos:
-        - Query no vacía (previene errores obvios)
-        - Timeout razonable (30s) para prevenir queries colgadas
+        We DO validate:
+        - Non-empty query (prevents obvious errors)
+        - Reasonable timeout (30s) to prevent hung queries
 
-        Ejecuta queries SQLite en un thread pool para no bloquear el event loop.
-        Usa un lock para serializar accesos y evitar problemas de concurrencia.
+        Executes SQLite queries in a thread pool to not block the event loop.
+        Uses a lock to serialize access and avoid concurrency issues.
 
         Args:
-            query: SQL query a ejecutar
-            params: Parámetros para la query
-            fetch: Tipo de fetch (ONE, ALL, NONE)
+            query: SQL query to execute
+            params: Query parameters
+            fetch: Fetch type (ONE, ALL, NONE)
 
         Returns:
-            QueryResult con los datos obtenidos
+            QueryResult with obtained data
 
         Raises:
-            DatabaseError: Si falla la ejecución
+            DatabaseError: If execution fails
         """
-        # Serializar accesos con lock para evitar problemas de concurrencia
+        # Serialize access with lock to avoid concurrency issues
         async with self._lock:
             loop = asyncio.get_event_loop()
 
             def _execute():
-                """Ejecuta la query en thread separado."""
+                """Execute query in separate thread."""
                 conn = self._get_connection()
                 cursor = conn.cursor()
 
@@ -344,20 +368,20 @@ class DatabaseManager:
                         return QueryResult(
                             data=data, rows_affected=cursor.rowcount, last_row_id=None
                         )
-                    else:  # FetchType.NONE o None
+                    else:  # FetchType.NONE or None
                         conn.commit()
                         return QueryResult(
                             data=None, rows_affected=cursor.rowcount, last_row_id=cursor.lastrowid
                         )
                 except sqlite3.Error as e:
                     conn.rollback()
-                    # Usar clasificación específica de errores SQLite
+                    # Use specific SQLite error classification
                     raise _classify_sqlite_error(e)
                 finally:
                     cursor.close()
 
             try:
-                # Ejecutar en thread pool con timeout de 30 segundos
+                # Execute in thread pool with 30 second timeout
                 result = await asyncio.wait_for(loop.run_in_executor(None, _execute), timeout=30.0)
                 return result
             except asyncio.TimeoutError:
@@ -369,63 +393,63 @@ class DatabaseManager:
 
     def migrate_schema(self, target_version: int):
         """
-        Sistema de migración de esquema.
+        Schema migration system.
 
-        ACLARACION: Método intencionalmente VACÍO
+        CLARIFICATION: Method intentionally EMPTY
         =========================================
-        Esta NO es funcionalidad faltante, es una DECISION ARQUITECTONICA explicita.
+        This is NOT missing functionality, it's an explicit ARCHITECTURAL DECISION.
 
-        POR QUÉ NO IMPLEMENTAMOS MIGRACIONES:
-        1. ACOLYTE es mono-usuario = sin equipos distribuidos
-        2. Esquema es estable = cambios infrecuentes
-        3. Instalación limpia = más simple que migración compleja
-        4. Backup manual = usuario tiene control total
+        WHY WE DON'T IMPLEMENT MIGRATIONS:
+        1. ACOLYTE is mono-user = no distributed teams
+        2. Schema is stable = infrequent changes
+        3. Clean installation = simpler than complex migration
+        4. Manual backup = user has full control
 
-        SI EN EL FUTURO necesitáramos migraciones:
-        - Añadir tabla schema_version
-        - Implementar migraciones incrementales
-        - Añadir rollback automático
+        IF IN THE FUTURE we need migrations:
+        - Add schema_version table
+        - Implement incremental migrations
+        - Add automatic rollback
 
-        REFERENCIA: Decisión #27 en docs/AUDIT_DECISIONS.md
+        REFERENCE: Decision #27 in docs/AUDIT_DECISIONS.md
         """
-        # El schema se inicializa completo en _init_schema()
-        # NO necesitamos migraciones para sistema mono-usuario
+        # Schema is initialized complete in _init_schema()
+        # We DON'T need migrations for mono-user system
         pass
 
 
 class InsightStore:
     """
-    Almacén especializado para insights del optimizador.
+    Specialized store for optimizer insights.
 
-    ⚠️ UBICACIÓN CORRECTA - NO MOVER A SERVICES ⚠️
+    ⚠️ CORRECT LOCATION - DO NOT MOVE TO SERVICES ⚠️
     =============================================
-    InsightStore DEBE estar en Core porque:
+    InsightStore MUST be in Core because:
 
-    1. ES INFRAESTRUCTURA ESPECIALIZADA, no lógica de negocio
-       - Maneja compresión zlib de datos
-       - Implementa deduplicación por hash
-       - Gestiona índices invertidos
+    1. IT'S SPECIALIZED INFRASTRUCTURE, not business logic
+       - Handles zlib data compression
+       - Implements hash-based deduplication
+       - Manages inverted indexes
 
-    2. SERÁ USADO POR DREAM SERVICE (futuro)
-       - Dream Service está en /dream (cuando se implemente)
-       - Dream usa InsightStore como su capa de persistencia
-       - Similar a cómo todos usan MetricsCollector de Core
+    2. WILL BE USED BY DREAM SERVICE (future)
+       - Dream Service is in /dream (when implemented)
+       - Dream uses InsightStore as its persistence layer
+       - Similar to how all modules use MetricsCollector from Core
 
-    3. SIGUE EL PATRÓN ARQUITECTÓNICO
-       - Core provee: Infraestructura + Stores especializados
-       - Services provee: Lógica de negocio + Orquestación
-       - Dream usará: InsightStore de Core para persistir
+    3. FOLLOWS THE ARCHITECTURAL PATTERN
+       - Core provides: Infrastructure + Specialized Stores
+       - Services provides: Business logic + Orchestration
+       - Dream will use: InsightStore from Core to persist
 
-    4. COMPARABLE A OTROS COMPONENTES DE CORE
-       - MetricsCollector: Usado por todos los módulos
-       - TokenBudgetManager: Usado por varios servicios
-       - InsightStore: Usado por Dream (específico pero infraestructura)
+    4. COMPARABLE TO OTHER CORE COMPONENTS
+       - MetricsCollector: Used by all modules
+       - TokenBudgetManager: Used by several services
+       - InsightStore: Used by Dream (specific but infrastructure)
 
-    Características:
-    1. Compresión automática (zlib nivel 9)
-    2. Deduplicación por similitud
-    3. Índice invertido para búsqueda
-    4. Ranking por relevancia
+    Features:
+    1. Automatic compression (zlib level 9)
+    2. Similarity-based deduplication
+    3. Inverted index for search
+    4. Relevance ranking
     """
 
     def __init__(self, db_manager: DatabaseManager):
@@ -435,42 +459,32 @@ class InsightStore:
         self, session_id: str, insights: List[Dict[str, Any]], compression_level: int = 9
     ) -> StoreResult:
         """
-        Almacena insights con deduplicación.
+        Store insights with deduplication.
 
-        Proceso:
-        1. Calcular hash de contenido
-        2. Buscar duplicados (similitud > 0.85)
-        3. Comprimir datos únicos
-        4. Actualizar índice invertido
-        5. Calcular estadísticas
+        Process:
+        1. Calculate content hash
+        2. Search for duplicates (similarity > 0.85)
+        3. Compress unique data
+        4. Update inverted index
+        5. Calculate statistics
         """
         logger.debug("Storing insights", session_id=session_id, count=len(insights))
-        """
-        Almacena insights con deduplicación.
-
-        Proceso:
-        1. Calcular hash de contenido
-        2. Buscar duplicados (similitud > 0.85)
-        3. Comprimir datos únicos
-        4. Actualizar índice invertido
-        5. Calcular estadísticas
-        """
         stored_count = 0
         duplicate_count = 0
 
         for insight in insights:
-            # Generar ID único
+            # Generate unique ID
             insight_id = generate_id()
 
-            # DECISIÓN #32: Aceptar duplicados para MVP
-            # Dream puede generar insights similares en diferentes ciclos
-            # Es normal y esperado tener algunos duplicados
-            # FUTURO: Si molesta, implementar hash de contenido
+            # DECISION #32: Accept duplicates for MVP
+            # Dream can generate similar insights in different cycles
+            # It's normal and expected to have some duplicates
+            # FUTURE: If annoying, implement content hashing
             # if duplicate_found:
             #     duplicate_count += 1
             #     continue
 
-            # Comprimir entities y code_references
+            # Compress entities and code_references
             entities_json = json.dumps(insight.get("entities", []))
             code_refs_json = json.dumps(insight.get("code_references", []))
 
@@ -487,7 +501,7 @@ class InsightStore:
             params = (
                 insight_id,
                 session_id,
-                insight["type"].upper(),  # Enum en MAYÚSCULAS
+                insight["type"].upper(),  # Enum in UPPERCASE
                 insight["title"],
                 insight["description"],
                 entities_compressed,
@@ -510,12 +524,12 @@ class InsightStore:
         return result
 
 
-# Singleton global para toda la aplicación
+# Global singleton for the entire application
 _db_manager = None
 
 
 def get_db_manager() -> DatabaseManager:
-    """Obtiene la instancia singleton de DatabaseManager."""
+    """Get the singleton DatabaseManager instance."""
     global _db_manager
     if _db_manager is None:
         _db_manager = DatabaseManager()

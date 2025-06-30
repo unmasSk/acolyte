@@ -92,7 +92,7 @@ class DefaultChunker(BaseChunker):
         self._tree_sitter_supported = False
         self.parser = None
         self.language = None
-        self.chunk_node_types = {}
+        self.chunk_node_types: Dict[str, ChunkType] = {}
 
         # Compile patterns for efficiency
         self._compiled_patterns: Dict[str, Any] = {

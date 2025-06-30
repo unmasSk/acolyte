@@ -5,6 +5,8 @@ Input validation utilities for ACOLYTE
 
 import re
 import socket
+import yaml
+import os
 
 
 def validate_project_name(name: str) -> bool:
@@ -21,7 +23,7 @@ def validate_port(port: int) -> bool:
     # Check if port is available
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.bind(("", port))
+            s.bind(("127.0.0.1", port))
             return True
     except OSError:
         return False
@@ -32,15 +34,22 @@ def sanitize_yaml_string(value: str) -> str:
     if not value:
         return ""
 
-    # Escape special characters
-    value = value.replace('"', '\\"')
-    value = value.replace("\n", "\\n")
-    value = value.replace("\t", "\\t")
-
-    return value
+    return yaml.dump(value).strip()
 
 
 def validate_path(path: str) -> bool:
     """Validate path doesn't contain dangerous patterns"""
-    dangerous_patterns = ["..", "~", "$", "|", ">", "<", "&", ";"]
-    return not any(pattern in path for pattern in dangerous_patterns)
+    try:
+        # Normalize and resolve the path
+        normalized = os.path.normpath(os.path.expanduser(path))
+
+        # Check for path traversal attempts
+        if ".." in normalized.split(os.sep):
+            return False
+
+        # Check for shell metacharacters (but allow them in filenames)
+        dangerous_chars = ["$", "|", ">", "<", "&", ";"]
+        # Only check at path boundaries to avoid false positives
+        return not any(char in os.path.basename(path) for char in dangerous_chars)
+    except (ValueError, OSError):
+        return False
