@@ -3,7 +3,7 @@ name = "acolyte"
 version = "0.1.0"
 description = "Local AI Programming Assistant with infinite memory and OpenAI-compatible API"
 readme = "README.md"
-authors = [{name = "Bextia", email = ""}]
+authors = [{name = "Bextia", email = "jatomillo@gmail.com"}]
 license = {text = "BSL"}
 classifiers = [
     "Development Status :: 3 - Alpha",
