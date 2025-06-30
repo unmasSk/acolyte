@@ -50,35 +50,15 @@
 
 ## 🚀 Quick Start
 
-> ⚠️ **Note:** These instructions are theoretical and untested. The installation process has never been validated in a real environment. Proceed with caution and expect issues.
->
-> **📖 For detailed step-by-step instructions, see the [Installation Guide](INSTALL.md)**
+> ⚠️ **Note:** ACOLYTE is in PRE-ALPHA stage. The installation process has never been validated in a real environment. Proceed with caution and expect issues.
 
-### Installation (Choose one method)
+### Installation
 
-#### Method 1: Install with pip (Recommended)
+ACOLYTE can be installed as a Python package. For detailed installation instructions, see the **[📦 Installation Guide](INSTALL.md)**.
 
 ```bash
-# Install from GitHub
+# Quick install with pip
 pip install git+https://github.com/unmasSk/acolyte.git
-
-# Or for development
-git clone https://github.com/unmasSk/acolyte.git
-cd acolyte
-pip install -e .
-```
-
-#### Method 2: Quick Install Scripts
-
-**Linux/Mac:**
-```bash
-curl -sSL https://raw.githubusercontent.com/unmasSk/acolyte/main/install-pip.sh | bash
-```
-
-**Windows:**
-```powershell
-Invoke-WebRequest -Uri https://raw.githubusercontent.com/unmasSk/acolyte/main/install-pip.bat -OutFile install-pip.bat
-.\install-pip.bat
 ```
 
 ### Usage (Per Project)
@@ -116,12 +96,16 @@ Your Project/
 ## 🛠️ Requirements
 
 - Python 3.11+
-- Docker & Docker Compose
+- Docker & Docker Compose  
 - Git
 - 8GB RAM minimum (16GB recommended)
 - 20GB free disk space
 
+For detailed system requirements and installation options, see the **[📦 Installation Guide](INSTALL.md)**.
+
 ## 💬 Commands
+
+ACOLYTE provides a comprehensive CLI. Here are the main commands:
 
 - `acolyte init` - Initialize ACOLYTE in current project
 - `acolyte install` - Install services and models
@@ -129,8 +113,11 @@ Your Project/
 - `acolyte stop` - Stop all services
 - `acolyte status` - Check service status
 - `acolyte index` - Index project files
+- `acolyte logs` - View service logs
 - `acolyte projects` - List all projects
 - `acolyte clean` - Clean cache and logs
+
+For complete CLI documentation, see **[📖 CLI Reference](bin/README.md)**.
 
 ## 🔧 Configuration
 
@@ -165,26 +152,29 @@ ACOLYTE provides an OpenAI-compatible API:
 
 ## 🐛 Troubleshooting
 
+Here are quick solutions to common issues:
+
 ### "acolyte: command not found"
 
 ```bash
-# Add to PATH
-echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
-source ~/.bashrc
+# Linux/Mac
+export PATH="$HOME/.local/bin:$PATH"
+
+# Windows - Add Python Scripts to PATH
 ```
 
-### Port already in use
+### Port conflicts
 
-Edit `~/.acolyte/projects/{id}/config.yaml` and change ports.
+Edit `~/.acolyte/projects/{id}/.acolyte` and change port numbers.
 
-### Model download fails
-
-Check internet connection and Docker status:
+### Docker issues
 
 ```bash
-docker ps
-docker exec acolyte-ollama ollama list
+docker ps  # Check if Docker is running
+acolyte logs  # View service logs
 ```
+
+For more troubleshooting help, see the **[📦 Installation Guide](INSTALL.md#troubleshooting)**.
 
 ## 🧑‍💻 Development
 
