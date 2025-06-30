@@ -22,8 +22,8 @@ from acolyte.core import (
     ExternalServiceError,
 )
 
-# API application
-from acolyte.api import app
+# API application - Lazy import to avoid initialization logs during CLI help
+# from acolyte.api import app  # Removed to prevent premature API initialization
 
 # Main services
 from acolyte.services import (
@@ -75,6 +75,17 @@ from acolyte.semantic import (
 # Dream system - simplified imports
 from acolyte.dream import create_dream_orchestrator
 
+# Lazy import function for API
+def get_app():
+    """
+    Get the ACOLYTE FastAPI application (lazy import).
+    
+    This function imports the API only when needed, preventing
+    initialization logs from appearing during CLI help commands.
+    """
+    from acolyte.api import app
+    return app
+
 # Package metadata
 __all__ = [
     # Version info
@@ -93,8 +104,8 @@ __all__ = [
     "ConfigurationError",
     "NotFoundError",
     "ExternalServiceError",
-    # API
-    "app",
+    # API - Use get_app() instead of direct import
+    "get_app",
     # Services
     "ChatService",
     "ConversationService",
@@ -147,7 +158,7 @@ def create_app():
     Returns:
         FastAPI: Configured application instance
     """
-    return app
+    return get_app()
 
 
 # Quick access to configuration
@@ -202,20 +213,25 @@ def check_version():
 
     return {
         "acolyte": __version__,
-        "python": sys.version,
+        "python": f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
         "platform": platform.platform(),
         "torch": torch_version,
         "weaviate": weaviate_version,
     }
 
 
-# Quick health check
 def is_ready():
     """
-    Quick check if ACOLYTE core components are ready.
+    Check if ACOLYTE is ready to use.
+
+    Example:
+        >>> if is_ready():
+        >>>     print("ACOLYTE is ready!")
+        >>> else:
+        >>>     print("ACOLYTE needs configuration")
 
     Returns:
-        bool: True if core components are accessible
+        bool: True if ACOLYTE is properly configured and ready
     """
     try:
         # Check database
@@ -224,10 +240,9 @@ def is_ready():
         _ = db.db_path
 
         # Check configuration
-        config = get_config()
+        config = Settings()
         # Verify configuration is valid by accessing a required setting
-        _ = config.get("model.name")
-
-        return True
+        model_name = config.get("model.name")
+        return model_name is not None
     except Exception:
         return False
