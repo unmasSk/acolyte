@@ -35,29 +35,45 @@ from acolyte.install.database import DatabaseInitializer
 
 
 def safe_input(prompt: str, default: str = "") -> str:
-    """Safe input that handles Windows terminal issues"""
+    """Safe input that handles terminal issues properly"""
     import sys
-    import time
 
-    # Clear any pending input
+    # For Windows, flush input/output streams
     if sys.platform == "win32":
-        import msvcrt
+        sys.stdout.flush()
+        sys.stdin.flush()
 
-        while msvcrt.kbhit():
-            msvcrt.getch()
+    # Try to get input multiple times if needed
+    max_attempts = 3
+    for attempt in range(max_attempts):
+        try:
+            result = input(prompt)
+            return result.strip() if result else default
+        except EOFError:
+            # This is normal when piped input ends
+            return default
+        except KeyboardInterrupt:
+            # User pressed Ctrl+C - re-raise this
+            raise
+        except Exception as e:
+            # Log the actual error for debugging
+            logger.warning(f"Input error (attempt {attempt + 1}/{max_attempts}): {e}")
+            if attempt < max_attempts - 1:
+                # Try again
+                import time
 
-    # Small delay to ensure terminal is ready
-    time.sleep(0.1)
-
-    # Try to get input
-    try:
-        result = input(prompt)
-        return result.strip()
-    except (EOFError, KeyboardInterrupt):
-        return default
-    except Exception:
-        # If all else fails, return default
-        return default
+                time.sleep(0.1)
+                continue
+            else:
+                # Last attempt failed - ask user what to do
+                print(f"\n{Colors.YELLOW}Warning: Input error occurred{Colors.ENDC}")
+                print(f"Press Enter to use default value: {default}")
+                try:
+                    input()
+                except EOFError:
+                    pass
+                return default
+    return default
 
 
 class InstallationCancelled(Exception):
@@ -122,7 +138,7 @@ class ProjectInfoCollector:
 
         # Ask if user wants to modify
         print(f"\n{Colors.CYAN}Is this correct?{Colors.ENDC}")
-        modify = input("Press Enter to accept, or 'e' to edit: ").strip().lower()
+        modify = safe_input("Press Enter to accept, or 'e' to edit: ", default="").lower()
 
         if modify == 'e':
             stack = self._edit_stack(stack)
@@ -304,7 +320,7 @@ class ProjectInfoCollector:
             print(
                 f"\n{Colors.YELLOW}Enter numbers to toggle (comma-separated), or press Enter to continue:{Colors.ENDC}"
             )
-            choices = input("> ").strip()
+            choices = safe_input("> ", default="")
 
             if choices:
                 for choice in choices.split(','):
@@ -373,9 +389,9 @@ class AdvancedConfiguration:
         print("     Specify your own Ollama model")
 
         while True:
-            choice = (
-                input(f"\n{Colors.CYAN}Select model [{default_choice}]: {Colors.ENDC}").strip()
-                or default_choice
+            choice = safe_input(
+                f"\n{Colors.CYAN}Select model [{default_choice}]: {Colors.ENDC}",
+                default=default_choice,
             )
 
             try:
@@ -391,7 +407,7 @@ class AdvancedConfiguration:
                         print_warning(
                             f"Your system has {ram_gb}GB RAM but this model requires {selected_info['ram_min']}GB"
                         )
-                        confirm = input("Continue anyway? [y/N]: ").strip().lower()
+                        confirm = safe_input("Continue anyway? [y/N]: ", default="n").lower()
                         if confirm != 'y':
                             continue
 
@@ -428,7 +444,7 @@ class AdvancedConfiguration:
         print(f"\n{Colors.CYAN}Enter custom Ollama model name:{Colors.ENDC}")
         print(f"{Colors.YELLOW}Examples: llama2:13b, mixtral:8x7b, codellama:34b{Colors.ENDC}")
 
-        model_name = input("Model name: ").strip()
+        model_name = safe_input("Model name: ", default="")
         if not model_name:
             print_warning("Model name cannot be empty")
             return self.configure_model()
@@ -439,7 +455,7 @@ class AdvancedConfiguration:
 
         while True:
             try:
-                context_size = int(input("Context size [32768]: ").strip() or "32768")
+                context_size = int(safe_input("Context size [32768]: ", default="32768"))
                 if context_size < 512:
                     print_warning("Context size should be at least 512")
                     continue
@@ -452,7 +468,7 @@ class AdvancedConfiguration:
 
         while True:
             try:
-                ram_required = int(input("RAM required [8]: ").strip() or "8")
+                ram_required = int(safe_input("RAM required [8]: ", default="8"))
                 if ram_required < 1:
                     print_warning("RAM requirement should be at least 1GB")
                     continue
@@ -486,9 +502,9 @@ class AdvancedConfiguration:
             print(f"  Ollama: {auto_ollama}")
             print(f"  Backend: {auto_backend}")
 
-            use_auto = (
-                input(f"\n{Colors.CYAN}Use these ports? [Y/n]: {Colors.ENDC}").strip().lower()
-            )
+            use_auto = safe_input(
+                f"\n{Colors.CYAN}Use these ports? [Y/n]: {Colors.ENDC}", default="y"
+            ).lower()
             if use_auto != 'n':
                 return {"weaviate": auto_weaviate, "ollama": auto_ollama, "backend": auto_backend}
         except RuntimeError:
@@ -519,7 +535,7 @@ class AdvancedConfiguration:
     ) -> int:
         """Configure a single port with validation"""
         while True:
-            port_input = input(f"{service} port [{default}]: ").strip()
+            port_input = safe_input(f"{service} port [{default}]: ", default=str(default))
 
             if not port_input:
                 port = default
@@ -536,7 +552,7 @@ class AdvancedConfiguration:
                 suggested = PortManager.find_next_available(port)
                 if suggested:
                     print_warning(f"Port {port} is not available. Suggested: {suggested}")
-                    use_suggested = input("Use suggested port? [Y/n]: ").strip().lower()
+                    use_suggested = safe_input("Use suggested port? [Y/n]: ", default="y").lower()
                     if use_suggested != 'n':
                         return suggested
                 else:
@@ -562,7 +578,9 @@ class AdvancedConfiguration:
         print(f"{Colors.YELLOW}Recommended: 50% of system RAM{Colors.ENDC}")
 
         while True:
-            memory_input = input(f"Memory limit [{default_memory}]: ").strip()
+            memory_input = safe_input(
+                f"Memory limit [{default_memory}]: ", default=str(default_memory)
+            )
             if not memory_input:
                 docker_memory = default_memory
                 break
@@ -585,7 +603,7 @@ class AdvancedConfiguration:
         print(f"{Colors.YELLOW}Recommended: 50% of CPU threads{Colors.ENDC}")
 
         while True:
-            cpu_input = input(f"CPU limit [{default_cpus}]: ").strip()
+            cpu_input = safe_input(f"CPU limit [{default_cpus}]: ", default=str(default_cpus))
             if not cpu_input:
                 docker_cpus = default_cpus
                 break
@@ -699,11 +717,9 @@ class LanguageConfiguration:
 
         print(f"\n{Colors.CYAN}Detected languages:{Colors.ENDC} {', '.join(languages)}")
 
-        configure = (
-            input(f"\n{Colors.CYAN}Configure linters and formatters? [Y/n]: {Colors.ENDC}")
-            .strip()
-            .lower()
-        )
+        configure = safe_input(
+            f"\n{Colors.CYAN}Configure linters and formatters? [Y/n]: {Colors.ENDC}", default="y"
+        ).lower()
         if configure == 'n':
             return {}
 
@@ -722,7 +738,7 @@ class LanguageConfiguration:
             print(f"  {len(options) + 1}. Skip (no linting for {lang})")
 
             while True:
-                choice = input("\nSelect option [1]: ").strip() or "1"
+                choice = safe_input("\nSelect option [1]: ", default="1")
 
                 try:
                     idx = int(choice) - 1
@@ -761,7 +777,7 @@ class LanguageConfiguration:
         print("\nEnter patterns (one per line, empty line to finish):")
 
         while True:
-            pattern = input("> ").strip()
+            pattern = safe_input("> ", default="")
             if not pattern:
                 break
             custom_patterns.append(pattern)
@@ -813,8 +829,8 @@ class ProjectInstaller:
                 reconfigure = safe_input("Reconfigure? [y/N]: ", default="n").lower()
 
                 if reconfigure != 'y':
-                    print_info("Keeping existing configuration")
-                    raise InstallationCancelled("User chose not to reconfigure")
+                    print_info("Installation cancelled - keeping existing configuration")
+                    return False  # Not an error, user chose to keep existing config
 
             # Collect all configuration
             config = await self._collect_configuration()
@@ -823,14 +839,13 @@ class ProjectInstaller:
             self._show_configuration_summary(config)
 
             # Confirm
-            confirm = (
-                input(f"\n{Colors.YELLOW}Proceed with installation? [Y/n]: {Colors.ENDC}")
-                .strip()
-                .lower()
-            )
+            confirm = safe_input(
+                f"\n{Colors.YELLOW}Proceed with installation? [Y/n]: {Colors.ENDC}", default="y"
+            ).lower()
+
             if confirm == 'n':
                 print_info("Installation cancelled by user")
-                raise InstallationCancelled("User cancelled at confirmation")
+                return False  # Not an error, user chose to cancel
 
             # Save configuration
             print_header("💾 Saving Configuration")
