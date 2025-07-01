@@ -172,9 +172,9 @@ class Settings:
         project_file = Path.cwd() / ".acolyte.project"
         if project_file.exists():
             try:
-                import json
+                import yaml
 
-                project_data = json.loads(project_file.read_text())
+                project_data = yaml.safe_load(project_file.read_text())
                 project_id = project_data.get("project_id")
                 if project_id:
                     global_config = Path.home() / ".acolyte" / "projects" / project_id / ".acolyte"

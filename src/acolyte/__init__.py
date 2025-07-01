@@ -75,16 +75,19 @@ from acolyte.semantic import (
 # Dream system - simplified imports
 from acolyte.dream import create_dream_orchestrator
 
+
 # Lazy import function for API
 def get_app():
     """
     Get the ACOLYTE FastAPI application (lazy import).
-    
+
     This function imports the API only when needed, preventing
     initialization logs from appearing during CLI help commands.
     """
     from acolyte.api import app
+
     return app
+
 
 # Package metadata
 __all__ = [

@@ -1,33 +1,15 @@
-# Include all package data
 include README.md
 include LICENSE
 include pyproject.toml
-
-# Include configuration examples
-recursive-include examples *.yaml *.yml *.example
-
-# Include documentation
-recursive-include docs *.md *.rst *.txt
-
-# Include scripts (for reference, not execution)
-recursive-include scripts *.py *.sh *.bat
-
-# Include bin files (executables)
-recursive-include bin *
-
-# Include SQL schemas
-recursive-include src *.sql
-
-# Include test data
-recursive-include tests *.py *.yaml *.yml *.json *.txt
-
-# Exclude compiled files
-global-exclude *.pyc
-global-exclude *.pyo
+include pytest.ini
+include mypy.ini
+recursive-include src *.py *.pyi *.typed
+recursive-include src/acolyte *.yaml *.yml *.json *.txt *.md *.sql
+recursive-include src/acolyte/install/resources *
+recursive-include bin *.py
+include bin/acolyte_wrapper.py
+recursive-include docs *.md
+recursive-include examples *
 global-exclude __pycache__
-global-exclude .git
-global-exclude .pytest_cache
-global-exclude .mypy_cache
-global-exclude .ruff_cache
-global-exclude .coverage
-global-exclude *.egg-info
+global-exclude *.py[co]
+global-exclude .DS_Store

@@ -15,6 +15,17 @@ pip install git+https://github.com/unmasSk/acolyte.git
 pip install git+https://github.com/unmasSk/acolyte.git
 ```
 
+> ⏱️ **Installation Time**: Downloads ~2GB including PyTorch and language models.  
+> With a standard connection (100Mbps) this takes 2-5 minutes.
+
+### Why the large size?
+ACOLYTE includes state-of-the-art AI models for code understanding:
+- **PyTorch** (~1.5GB) - Deep learning framework
+- **Transformers** (~500MB) - Language model libraries
+- **Tree-sitter** (~50MB) - Code parsing for 31+ languages
+
+This is a **one-time download** - all projects share the same models.
+
 #### From PyPI (When published)
 ```bash
 pip install acolyte

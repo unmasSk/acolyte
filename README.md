@@ -61,6 +61,13 @@ ACOLYTE can be installed as a Python package. For detailed installation instruct
 pip install git+https://github.com/unmasSk/acolyte.git
 ```
 
+> ⏱️ **Note**: Installation downloads ~2GB including PyTorch and language models.  
+> With a standard connection (100Mbps) this takes 2-5 minutes.
+
+### Why the large size?
+ACOLYTE includes state-of-the-art AI models for code understanding.
+This is a one-time download - all projects share the same models.
+
 ### Usage (Per Project)
 
 ```bash

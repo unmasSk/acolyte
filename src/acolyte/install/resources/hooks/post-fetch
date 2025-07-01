@@ -1,0 +1,158 @@
+#!/usr/bin/env python3
+"""
+Git hook que se ejecuta después de fetch.
+Notifica a ACOLYTE sobre cambios disponibles del upstream (sin aplicar).
+"""
+import subprocess
+import requests
+import json
+import sys
+from pathlib import Path
+
+import yaml
+import subprocess
+import requests
+import json
+import sys
+from pathlib import Path
+
+def get_acolyte_config():
+    """Lee el puerto de ACOLYTE desde .acolyte"""
+    try:
+        acolyte_file = Path.cwd() / '.acolyte'
+        if acolyte_file.exists():
+            with open(acolyte_file, 'r') as f:
+                config = yaml.safe_load(f)
+                return config.get('ports', {}).get('backend', 8000)
+    except (FileNotFoundError, yaml.YAMLError, KeyError) as e:
+        # Log specific error for debugging
+        pass
+    return 8000
+
+
+def get_upstream_changes():
+    """Detecta archivos con cambios disponibles del upstream"""
+    changes = {}
+    
+    try:
+        # Obtener el branch actual
+        current_branch = subprocess.run(
+            ['git', 'branch', '--show-current'],
+            capture_output=True,
+            text=True,
+            timeout=10
+        ).stdout.strip()
+        
+        if not current_branch:
+            return changes
+            
+        # Verificar si hay un upstream configurado
+        upstream = f"origin/{current_branch}"
+        
+        # Verify upstream exists before comparing
+        upstream_check = subprocess.run(
+            ['git', 'rev-parse', '--verify', upstream],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+        if upstream_check.returncode != 0:
+            return changes
+            
+        # Comparar HEAD local con upstream
+        result = subprocess.run(
+            ['git', 'diff', '--name-only', 'HEAD', upstream],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+        
+        if result.returncode == 0:
+            files = [f.strip() for f in result.stdout.splitlines() if f.strip()]
+            if files:
+                changes['files'] = files
+                
+                # Contar commits pendientes
+                behind = subprocess.run(
+                    ['git', 'rev-list', '--count', f'HEAD..{upstream}'],
+                    capture_output=True,
+                    text=True,
+                    timeout=10
+                ).stdout.strip()
+                
+                ahead = subprocess.run(
+                    ['git', 'rev-list', '--count', f'{upstream}..HEAD'],
+                    capture_output=True,
+                    text=True,
+                    timeout=10
+                ).stdout.strip()
+                
+                changes['commits_behind'] = int(behind) if behind.isdigit() else 0
+                changes['commits_ahead'] = int(ahead) if ahead.isdigit() else 0
+                changes['upstream'] = upstream
+                
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, ValueError) as e:
+        # No hay upstream o error al comparar
+        pass
+    
+    return changes
+def get_fetch_info():
+    """Obtiene información sobre lo que se fetcheó"""
+    try:
+        # FETCH_HEAD contiene info del último fetch
+        fetch_head = Path('.git/FETCH_HEAD')
+        if fetch_head.exists():
+            with open(fetch_head, 'r') as f:
+                lines = f.readlines()
+                # Parsear para obtener branches/tags fetcheados
+                fetched = []
+                for line in lines:
+                    if 'branch' in line:
+                        parts = line.split()
+                        if len(parts) > 2:
+                            fetched.append(parts[2].strip("'"))
+                return fetched
+    except (FileNotFoundError, PermissionError, OSError) as e:
+        pass
+    return []
+def notify_acolyte(changes):
+    """Notifica a ACOLYTE sobre cambios disponibles"""
+    port = get_acolyte_config()
+    url = f"http://localhost:{port}/api/index/git-changes"
+    
+    try:
+        fetched_refs = get_fetch_info()
+        
+        response = requests.post(url, json={
+            'trigger': 'fetch',
+            'files': changes.get('files', []),
+            'metadata': {
+                'event': 'post-fetch',
+                'commits_behind': changes.get('commits_behind', 0),
+                'commits_ahead': changes.get('commits_ahead', 0),
+                'upstream': changes.get('upstream', ''),
+                'fetched_refs': fetched_refs,
+                'changes_available': len(changes.get('files', [])) > 0,
+                'action_required': changes.get('commits_behind', 0) > 0
+            }
+        }, timeout=5)
+        
+        if response.status_code != 200:
+            print(f"ACOLYTE: Error al notificar fetch (status {response.status_code})")
+    except requests.exceptions.ConnectionError:
+        # ACOLYTE no está corriendo, lo cual es OK
+        pass
+    except requests.exceptions.Timeout:
+        print("ACOLYTE: Timeout al notificar - servicio podría estar sobrecargado")
+    except requests.exceptions.RequestException as e:
+        print(f"ACOLYTE: Error de red: {e}")
+    except Exception as e:
+        print(f"ACOLYTE: Error inesperado: {e}")
+
+
+if __name__ == "__main__":
+    changes = get_upstream_changes()
+    
+    # Siempre notificar después de fetch, incluso sin cambios
+    # para que ACOLYTE sepa que el usuario está sincronizando
+    notify_acolyte(changes)
