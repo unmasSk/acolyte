@@ -15,7 +15,6 @@ import yaml
 from acolyte.core.logging import logger
 from acolyte.core.exceptions import ConfigurationError
 from acolyte.install.common import (
-    ACOLYTE_LOGO,
     Colors,
     DockerGenerator,
     ModelRecommender,
@@ -770,10 +769,9 @@ class ProjectInstaller:
             True if successful, False otherwise
         """
         try:
-            # Show header
-            print(ACOLYTE_LOGO)
+            # Show header (logo already shown in cli.py)
             animate_text(
-                f"{Colors.CYAN}{Colors.BOLD}ACOLYTE INSTALL - Interactive Configuration{Colors.ENDC}",
+                f"{Colors.CYAN}{Colors.BOLD}Interactive Configuration{Colors.ENDC}",
                 duration=1.0,
             )
             print("\n")
