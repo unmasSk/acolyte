@@ -296,6 +296,8 @@ def install(path: str):
 
     # Run installer
     try:
+        from acolyte.install.installer import InstallationCancelled
+
         installer = ProjectInstaller(project_path, manager.global_dir)
         success = asyncio.run(installer.run())
 
@@ -306,6 +308,9 @@ def install(path: str):
             click.echo(click.style("✗ Installation failed!", fg="red"))
             sys.exit(1)
 
+    except InstallationCancelled:
+        # User cancelled - this is OK, not an error
+        sys.exit(0)
     except Exception as e:
         click.echo(click.style(f"✗ Installation error: {e}", fg="red"))
         sys.exit(1)

@@ -34,6 +34,36 @@ from acolyte.install.resources_manager import get_modelfile
 from acolyte.install.database import DatabaseInitializer
 
 
+def safe_input(prompt: str, default: str = "") -> str:
+    """Safe input that handles Windows terminal issues"""
+    import sys
+    import time
+
+    # Clear any pending input
+    if sys.platform == "win32":
+        import msvcrt
+
+        while msvcrt.kbhit():
+            msvcrt.getch()
+
+    # Small delay to ensure terminal is ready
+    time.sleep(0.1)
+
+    # Try to get input
+    try:
+        result = input(prompt)
+        return result.strip()
+    except (EOFError, KeyboardInterrupt):
+        return default
+    except Exception:
+        # If all else fails, return default
+        return default
+
+
+class InstallationCancelled(Exception):
+    """Raised when user cancels installation"""
+
+
 class ProjectInfoCollector:
     """Collect project information interactively"""
 
@@ -779,10 +809,12 @@ class ProjectInstaller:
             # Check if already configured
             if self.config_path.exists():
                 print_warning("ACOLYTE is already configured for this project")
-                reconfigure = input("Reconfigure? [y/N]: ").strip().lower()
+
+                reconfigure = safe_input("Reconfigure? [y/N]: ", default="n").lower()
+
                 if reconfigure != 'y':
-                    print_info("Installation cancelled")
-                    return False
+                    print_info("Keeping existing configuration")
+                    raise InstallationCancelled("User chose not to reconfigure")
 
             # Collect all configuration
             config = await self._collect_configuration()
@@ -797,8 +829,8 @@ class ProjectInstaller:
                 .lower()
             )
             if confirm == 'n':
-                print_warning("Installation cancelled")
-                return False
+                print_info("Installation cancelled by user")
+                raise InstallationCancelled("User cancelled at confirmation")
 
             # Save configuration
             print_header("💾 Saving Configuration")
